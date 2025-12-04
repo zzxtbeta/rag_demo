@@ -187,11 +187,41 @@ async for update in graph.astream(
 
 > 同一个 `thread_id` 会共享对话上下文，不同 `thread_id` 之间相互隔离。
 
-### 7. 与 LangGraph CLI / Agent Server 集成（可选）
+### 7. FastAPI 接口
 
-你可以将 `graph` 暴露为 LangGraph Agent Server，或在 FastAPI 中封装 HTTP 接口。参考：
-- LangGraph CLI 文档
-- LangGraph Agent Server / Studio 集成文档
+项目内置了一个 FastAPI 服务，可直接对接工作流：
+
+```bash
+uvicorn api.app:app --reload
+```
+
+`POST /chat` 请求示例：
+
+```json
+{
+  "thread_id": "user-123",
+  "user_id": "alice",
+  "message": "帮我总结文档的关键结论"
+}
+```
+
+响应：
+
+```json
+{
+  "thread_id": "user-123",
+  "user_id": "alice",
+  "answer": "..."
+}
+```
+
+FastAPI 在启动时会：
+
+1. 初始化 PostgreSQL 连接池和 LangGraph Postgres checkpointer；
+2. 构建异步 `graph` 实例并缓存到 `app.state`；
+3. 每次调用 `/chat` 时，通过 `graph.ainvoke(...)` 与 LangGraph workflow 交互。
+
+当部署到 LangGraph Agent Server / Cloud 时，可通过 `langgraph dev` 或 `langgraph up` 直接加载 `graph`（此时 checkpointer 由平台管理）。
 
 ## 后续扩展方向
 

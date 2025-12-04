@@ -25,7 +25,7 @@
 query_or_respond (LLM 决策，是否调用检索工具)
   ├─→ 无 tool_calls → 直接回答 → END
   └─→ 有 tool_calls → tools (retrieve_context)
-                          ↓
+       ↓
                        generate (基于检索结果生成答案) → END
 ```
 
@@ -150,10 +150,10 @@ python -m scripts.init_vectorstore
 
 ```bash
 python -m scripts.init_vectorstore \
-  --pdf-dir ./data \
+    --pdf-dir ./data \
   --collection-name pdf_documents \
-  --chunk-size 1500 \
-  --chunk-overlap 300
+    --chunk-size 1500 \
+    --chunk-overlap 300
 ```
 
 ### 6. 运行异步 RAG Agent（本地调用）

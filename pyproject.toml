@@ -24,8 +24,10 @@ dependencies = [
     "langchain-text-splitters>=0.3.11,<1.1.0",
     "pypdf>=5.1.0",
     "psycopg[binary]>=3.1.0",
+    # API & streaming
     "fastapi>=0.115.0,<0.116.0",
     "uvicorn>=0.30.0,<0.31.0",
+    "redis>=5.0.0",
 ]
 
 [project.optional-dependencies]
@@ -43,13 +45,15 @@ requires = ["setuptools>=73.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["agent", "tools", "utils", "config", "db"]
+packages = ["agent", "tools", "utils", "config", "db", "api", "infra"]
 [tool.setuptools.package-dir]
 "agent" = "src/agent"
 "tools" = "src/tools"
 "utils" = "src/utils"
 "config" = "src/config"
 "db" = "src/db"
+"api" = "src/api"
+"infra" = "src/infra"
 
 
 [tool.setuptools.package-data]

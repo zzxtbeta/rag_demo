@@ -36,6 +36,12 @@
 ### 文档处理
 - **pypdf** (>=5.1.0): PDF 文档解析
 
+### API 与前端
+- **fastapi** (>=0.115.0,<0.116.0): Web 框架，提供 REST API 和 WebSocket 端点
+- **uvicorn** (>=0.30.0,<0.31.0): ASGI 服务器
+- **redis** (>=5.0.0): Redis 客户端，用于 Pub/Sub 流式消息传递
+- **React + TypeScript + Vite**: 前端聊天界面（`frontend/` 目录）
+
 ### 开发工具
 - **Python** (>=3.10): 编程语言
 - **ruff** (>=0.6.1): 代码格式化和 linting
@@ -86,6 +92,12 @@
 #### 持久化与记忆模式
 - 短期记忆：使用 `langgraph.checkpoint.postgres.PostgresSaver`，通过 `thread_id` 控制对话线程的状态恢复
 - 长期记忆：预留 `AsyncPostgresStore` 封装（`src/db/memory_store.py`），未来可按 LangGraph 官方 Memory 模式接入跨线程记忆
+
+#### 流式处理与实时通信模式
+- **Redis Pub/Sub**: 使用 `workflow:{thread_id}:{node_name}:{message_type}` 频道命名，实现节点级实时推送
+- **WebSocket**: 通过 `/ws/{thread_id}` 端点代理 Redis 消息到前端，支持多客户端订阅
+- **消息序列化**: 使用 `message_to_dict()` 处理 LangChain `AIMessage` 对象，避免 JSON 序列化错误
+- **前端消息解析**: 从 `data.messages` 数组中提取 AI 回复，节点输出可折叠显示 JSON 详情
 
 ### Testing Strategy
 

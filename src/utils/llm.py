@@ -14,7 +14,7 @@ def load_chat_model(
     """Load a chat model configured via Settings."""
     settings = get_settings()
     model_name = fully_specified_name or settings.model_name
-
+    
     return ChatOpenAI(
         model=model_name,
         api_key=settings.dascope_api_key,

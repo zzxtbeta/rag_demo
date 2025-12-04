@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator, Optional
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 # Windows needs selector event loop for psycopg/asyncio compatibility
 if sys.platform == "win32":
@@ -19,6 +20,7 @@ from agent.graph import build_graph
 from db.checkpointer import CheckpointerManager
 from db.database import DatabaseManager
 from api.routes.chat import router as chat_router
+from api.routes.stream import router as stream_router
 
 
 @asynccontextmanager
@@ -40,7 +42,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     """Factory for FastAPI app."""
     app = FastAPI(title="RAG Agent API", version="1.0.0", lifespan=lifespan)
+
+    # Enable CORS for frontend (e.g., Vite dev server on 5173)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     app.include_router(chat_router, prefix="/chat", tags=["chat"])
+    app.include_router(stream_router, tags=["stream"])
     return app
 
 

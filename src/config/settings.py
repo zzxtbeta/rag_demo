@@ -66,6 +66,8 @@ class Settings:
     chunk_size: int
     chunk_overlap: int
     retriever_top_k: int
+    redis_url: Optional[str]
+    workflow_timeout_seconds: int
 
     @property
     def psycopg_connection(self) -> str:
@@ -95,6 +97,8 @@ def get_settings() -> Settings:
         chunk_size=_coerce_int("CHUNK_SIZE", 1000),
         chunk_overlap=_coerce_int("CHUNK_OVERLAP", 200),
         retriever_top_k=_coerce_int("RETRIEVER_TOP_K", 2),
+        redis_url=os.getenv("REDIS_URL"),
+        workflow_timeout_seconds=_coerce_int("WORKFLOW_TIMEOUT_SECONDS", 300),
     )
 
 

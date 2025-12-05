@@ -10,7 +10,13 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
 from api.dependencies import get_graph, get_redis_publisher
-from api.schemas import ChatRequest, ChatResponse, StreamStartResponse
+from api.schemas import (
+    ChatRequest,
+    ChatResponse,
+    StreamStartResponse,
+    HistoryMessage,
+    ThreadHistory,
+)
 from api.utils import extract_content
 from config.settings import get_settings
 from infra.redis_pubsub import RedisPublisher, StreamMessage
@@ -109,11 +115,10 @@ async def _stream_workflow_to_redis(
 
     ✅ 流程：
     1. 发布工作流开始事件（workflow:start）
-    2. 使用 stream_mode="updates" 流式执行 graph.astream
-    3. 对每个节点更新：
-       - 发布节点开始事件（如果节点切换）
-       - 规范化节点输出数据（处理 AIMessage 等）
-       - 发布节点完成事件（包含执行时间）
+    2. 使用 stream_mode=["messages", "updates"] 混合模式流式执行 graph.astream
+    3. 处理两种类型的流式输出：
+       - "messages" 模式：发布 token 级别的流式消息（message_chunk, metadata）
+       - "updates" 模式：发布节点状态更新（节点开始/完成事件）
     4. 工作流完成后发布 workflow:complete（包含所有节点时间统计）
     5. 发生错误时发布 workflow:error（区分超时、取消、执行错误）
 
@@ -126,12 +131,16 @@ async def _stream_workflow_to_redis(
 
     事件发布：
     - workflow:{thread_id}:workflow:start - 工作流开始
+    - workflow:{thread_id}:{node_name}:token - token 级别的流式消息
     - workflow:{thread_id}:{node_name}:start - 节点开始（推断）
     - workflow:{thread_id}:{node_name}:output - 节点完成
     - workflow:{thread_id}:workflow:complete - 工作流完成
     - workflow:{thread_id}:workflow:error - 工作流错误
 
     注意：
+    - 混合模式返回 (mode, chunk) 元组，需要根据 mode 区分处理
+    - messages 模式的 chunk 是 (message_chunk, metadata) 元组
+    - updates 模式的 chunk 是 {node_name: update} 字典
     - 节点开始事件是通过追踪 last_node 推断的，不是真正的开始时间
     - 执行时间记录的是节点间时间间隔，不是精确的节点执行时间
     - 超时时间由 WORKFLOW_TIMEOUT_SECONDS 配置（默认 300 秒）
@@ -157,41 +166,84 @@ async def _stream_workflow_to_redis(
     )
 
     async def _process_stream():
-        async for chunk in graph.astream(
+        async for stream_mode, chunk in graph.astream(
             payload,
             config,
-            stream_mode="updates",
+            stream_mode=["messages", "updates"],
         ):
-            for node_name, update in chunk.items():
-                nonlocal last_node, node_start_time
-                if node_name != last_node and last_node is not None:
-                    elapsed_ms = (time.perf_counter() - node_start_time) * 1000
-                    node_times[last_node] = elapsed_ms
-
-                if node_name != last_node:
-                    await publisher.publish_node_output(
-                        thread_id=thread_id,
-                        node_name=node_name,
-                        data={"status": "starting"},
-                        status="starting",
-                        message_type="start",
-                    )
-                    node_start_time = time.perf_counter()
-
-                normalized = _normalize_update(update)
-                elapsed_ms = (time.perf_counter() - node_start_time) * 1000
-                node_times[node_name] = elapsed_ms
-
+            if stream_mode == "messages":
+                # messages 模式：chunk 是 (message_chunk, metadata) 元组
+                message_chunk, metadata = chunk
+                node_name = metadata.get("node", "unknown")
+                
+                # 提取 token 内容：优先从对象属性获取，否则从规范化后的字典获取
+                token_content = ""
+                if hasattr(message_chunk, "content"):
+                    # 直接访问 AIMessageChunk 的 content 属性
+                    token_content = str(message_chunk.content) if message_chunk.content else ""
+                elif hasattr(message_chunk, "text"):
+                    # 备用：访问 text 属性
+                    token_content = str(message_chunk.text) if message_chunk.text else ""
+                else:
+                    # 规范化后从字典提取
+                    normalized_chunk = _normalize_update(message_chunk)
+                    if isinstance(normalized_chunk, dict):
+                        if "content" in normalized_chunk:
+                            token_content = str(normalized_chunk["content"])
+                        elif "data" in normalized_chunk and isinstance(normalized_chunk["data"], dict):
+                            token_content = str(normalized_chunk["data"].get("content", ""))
+                        elif isinstance(normalized_chunk.get("text"), str):
+                            token_content = normalized_chunk["text"]
+                
+                # 规范化消息块和元数据用于完整信息
+                normalized_chunk = _normalize_update(message_chunk)
+                normalized_metadata = _normalize_update(metadata)
+                
+                # 发布 token 级别的消息
                 await publisher.publish_node_output(
                     thread_id=thread_id,
                     node_name=node_name,
-                    data=normalized,
-                    status="completed",
-                    message_type="output",
-                    execution_time_ms=elapsed_ms,
+                    data={
+                        "token": token_content,
+                        "chunk": normalized_chunk,
+                        "metadata": normalized_metadata,
+                    },
+                    status="streaming",
+                    message_type="token",
                 )
-                last_node = node_name
-                node_start_time = time.perf_counter()
+                
+            elif stream_mode == "updates":
+                # updates 模式：chunk 是 {node_name: update} 字典
+                for node_name, update in chunk.items():
+                    nonlocal last_node, node_start_time
+                    if node_name != last_node and last_node is not None:
+                        elapsed_ms = (time.perf_counter() - node_start_time) * 1000
+                        node_times[last_node] = elapsed_ms
+
+                    if node_name != last_node:
+                        await publisher.publish_node_output(
+                            thread_id=thread_id,
+                            node_name=node_name,
+                            data={"status": "starting"},
+                            status="starting",
+                            message_type="start",
+                        )
+                        node_start_time = time.perf_counter()
+
+                    normalized = _normalize_update(update)
+                    elapsed_ms = (time.perf_counter() - node_start_time) * 1000
+                    node_times[node_name] = elapsed_ms
+
+                    await publisher.publish_node_output(
+                        thread_id=thread_id,
+                        node_name=node_name,
+                        data=normalized,
+                        status="completed",
+                        message_type="output",
+                        execution_time_ms=elapsed_ms,
+                    )
+                    last_node = node_name
+                    node_start_time = time.perf_counter()
 
     try:
         await asyncio.wait_for(_process_stream(), timeout=timeout_seconds)
@@ -284,6 +336,100 @@ async def chat_stream_endpoint(
         ws_channel=f"workflow:{req.thread_id}:*",
         status="streaming",
     )
+
+
+@router.get("/threads/{thread_id}/history", response_model=ThreadHistory)
+async def get_thread_history(
+    thread_id: str,
+    graph=Depends(get_graph),
+):
+    """获取线程的完整历史记录。
+
+    ✅ 流程：
+    1. 从 graph 获取 checkpointer
+    2. 使用 graph.aget_state 获取当前状态
+    3. 从状态中提取 messages 数组
+    4. 转换为 HistoryMessage 格式返回
+
+    参数：
+    - thread_id: 会话线程标识
+
+    返回：
+    - ThreadHistory: 包含 thread_id、messages 列表、total_messages
+
+    注意：
+    - 如果线程不存在，返回 404 错误
+    - 如果 graph 没有配置 checkpointer，返回 400 错误
+    - messages 按时间顺序排列（从旧到新）
+    """
+    try:
+        config = {"configurable": {"thread_id": thread_id}}
+
+        # 获取当前状态（包含所有历史消息）
+        state = await graph.aget_state(config)
+        if not state:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Thread not found: {thread_id}",
+            )
+
+        # 从状态中提取消息
+        messages = state.values.get("messages", [])
+
+        # 转换为 HistoryMessage 对象
+        history_messages: list[HistoryMessage] = []
+        for msg in messages:
+            # 判断消息类型
+            if hasattr(msg, "type"):
+                if msg.type == "human":
+                    role = "user"
+                elif msg.type == "ai":
+                    role = "assistant"
+                elif msg.type == "system":
+                    role = "system"
+                else:
+                    # 跳过其他类型的消息（如 tool）
+                    continue
+            else:
+                # 默认作为 assistant 消息
+                role = "assistant"
+
+            # 提取内容
+            content = getattr(msg, "content", "")
+            if not content:
+                continue
+
+            # 提取时间戳（如果有）
+            timestamp = None
+            if hasattr(msg, "timestamp"):
+                timestamp = msg.timestamp
+            elif hasattr(msg, "response_metadata"):
+                metadata = getattr(msg, "response_metadata", {})
+                if isinstance(metadata, dict) and "timestamp" in metadata:
+                    timestamp = metadata["timestamp"]
+
+            history_messages.append(
+                HistoryMessage(
+                    role=role,
+                    content=str(content),
+                    timestamp=timestamp,
+                )
+            )
+
+        return ThreadHistory(
+            thread_id=thread_id,
+            messages=history_messages,
+            total_messages=len(history_messages),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception(f"Error fetching thread history: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch thread history: {str(exc)}",
+        ) from exc
 
 
 __all__ = ["router"]

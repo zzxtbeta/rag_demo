@@ -3,44 +3,160 @@ import { ChatMessage, ThreadSummary } from "../types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
+const STORAGE_KEY_THREADS = "chat_threads";
+const STORAGE_KEY_ACTIVE_THREAD = "chat_active_thread";
+
 interface UseChatStreamResult {
   activeThreadId: string | null;
   threads: ThreadSummary[];
   messages: ChatMessage[];
   isStreaming: boolean;
   sendMessage: (content: string) => Promise<void>;
-  switchThread: (threadId: string) => void;
+  switchThread: (threadId: string) => Promise<void>;
   createThread: () => void;
 }
 
+// 从 localStorage 加载 threads
+function loadThreadsFromStorage(): ThreadSummary[] {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY_THREADS);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error("Failed to load threads from storage:", error);
+  }
+  return [];
+}
+
+// 保存 threads 到 localStorage
+function saveThreadsToStorage(threads: ThreadSummary[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEY_THREADS, JSON.stringify(threads));
+  } catch (error) {
+    console.error("Failed to save threads to storage:", error);
+  }
+}
+
+// 从 localStorage 加载 activeThreadId
+function loadActiveThreadFromStorage(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_KEY_ACTIVE_THREAD);
+  } catch (error) {
+    console.error("Failed to load active thread from storage:", error);
+  }
+  return null;
+}
+
+// 保存 activeThreadId 到 localStorage
+function saveActiveThreadToStorage(threadId: string | null): void {
+  try {
+    if (threadId) {
+      localStorage.setItem(STORAGE_KEY_ACTIVE_THREAD, threadId);
+    } else {
+      localStorage.removeItem(STORAGE_KEY_ACTIVE_THREAD);
+    }
+  } catch (error) {
+    console.error("Failed to save active thread to storage:", error);
+  }
+}
+
 export function useChatStream(userId: string = "demo-user"): UseChatStreamResult {
-  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
-  const [threads, setThreads] = useState<ThreadSummary[]>([]);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(() => 
+    loadActiveThreadFromStorage()
+  );
+  const [threads, setThreads] = useState<ThreadSummary[]>(() => 
+    loadThreadsFromStorage()
+  );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
 
-  const ensureThread = useCallback(() => {
-    if (activeThreadId) return activeThreadId;
+  // 当 threads 变化时，保存到 localStorage
+  useEffect(() => {
+    saveThreadsToStorage(threads);
+  }, [threads]);
+
+  // 当 activeThreadId 变化时，保存到 localStorage
+  useEffect(() => {
+    saveActiveThreadToStorage(activeThreadId);
+  }, [activeThreadId]);
+
+  // 初始化时，如果有 activeThreadId，加载历史记录
+  useEffect(() => {
+    if (activeThreadId) {
+      loadThreadHistory(activeThreadId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 只在组件挂载时执行一次
+
+  const ensureThread = useCallback(async () => {
+    if (activeThreadId) {
+      return activeThreadId;
+    }
     const id = `thread_${userId}_${Date.now()}`;
     const title = "New Chat";
     const now = Date.now();
-    setThreads((prev) => [{ id, title, lastUpdated: now }, ...prev]);
+    setThreads((prev) => {
+      const updated = [{ id, title, lastUpdated: now }, ...prev];
+      saveThreadsToStorage(updated);
+      return updated;
+    });
     setActiveThreadId(id);
+    setMessages([]);
     return id;
   }, [activeThreadId, userId]);
 
-  const switchThread = useCallback((threadId: string) => {
-    setActiveThreadId(threadId);
-    setMessages((prev) => prev.filter((m) => m.threadId === threadId));
+  const loadThreadHistory = useCallback(async (threadId: string) => {
+    try {
+      const response = await fetch(`${API_BASE}/chat/threads/${encodeURIComponent(threadId)}/history`);
+      if (!response.ok) {
+        if (response.status === 404) {
+          // 线程不存在，清空消息
+          setMessages([]);
+          return;
+        }
+        throw new Error(`Failed to load history: ${response.statusText}`);
+      }
+      const data = await response.json();
+      
+      // 将历史消息转换为 ChatMessage 格式
+      const historyMessages: ChatMessage[] = data.messages.map((msg: any, index: number) => ({
+        id: `${threadId}_history_${index}`,
+        threadId: threadId,
+        role: msg.role,
+        content: msg.content,
+        timestamp: msg.timestamp || Date.now() - (data.messages.length - index) * 1000,
+      }));
+      
+      setMessages(historyMessages);
+    } catch (error) {
+      console.error("Failed to load thread history:", error);
+      // 如果加载失败，至少清空当前消息
+      setMessages([]);
+    }
   }, []);
+
+  const switchThread = useCallback(
+    async (threadId: string) => {
+      setActiveThreadId(threadId);
+      setMessages([]); // 先清空，避免显示旧消息
+      // 加载该线程的历史记录
+      await loadThreadHistory(threadId);
+    },
+    [loadThreadHistory]
+  );
 
   const createThread = useCallback(() => {
     const id = `thread_${userId}_${Date.now()}`;
     const title = "New Chat";
     const now = Date.now();
-    setThreads((prev) => [{ id, title, lastUpdated: now }, ...prev]);
+    setThreads((prev) => {
+      const updated = [{ id, title, lastUpdated: now }, ...prev];
+      saveThreadsToStorage(updated);
+      return updated;
+    });
     setActiveThreadId(id);
     setMessages([]);
   }, [userId]);
@@ -62,44 +178,59 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
           const messageType = data.message_type;
           const rawData = data.data ?? {};
 
-          let nodeContent = "";
-          let extractedAiMessage: ChatMessage | null = null;
-          let shouldShowNodeMessage = false;
-
           if (messageType === "complete") {
             return;
           }
 
-          if (messageType === "error") {
-            nodeContent = `Error: ${rawData.error || "Unknown error"}`;
-            shouldShowNodeMessage = true;
-          } else if (rawData.messages && Array.isArray(rawData.messages)) {
-            const aiMessages = rawData.messages.filter(
-              (m: any) => m.type === "ai" && m.data?.content,
-            );
-            if (aiMessages.length > 0) {
-              const lastAiMsg = aiMessages[aiMessages.length - 1];
-              extractedAiMessage = {
-                id: `${Date.now()}_ai_${Math.random().toString(36).slice(2)}`,
-                threadId: threadIdFromData,
-                role: "assistant",
-                content: lastAiMsg.data.content,
-                timestamp: Date.now(),
-              };
-              nodeContent = JSON.stringify(rawData, null, 2);
-              shouldShowNodeMessage = true;
-            } else {
-              nodeContent = JSON.stringify(rawData, null, 2);
-              shouldShowNodeMessage = true;
+          // 处理 token 级别的流式消息
+          if (messageType === "token") {
+            const token = rawData.token || "";
+            if (token) {
+              setMessages((prev) => {
+                const lastMsg = prev[prev.length - 1];
+                // 如果最后一条消息是 assistant 消息，追加 token
+                if (lastMsg?.role === "assistant") {
+                  return prev.map((msg, idx) =>
+                    idx === prev.length - 1
+                      ? { ...msg, content: msg.content + token }
+                      : msg,
+                  );
+                } else {
+                  // 否则创建新的 assistant 消息
+                  return [
+                    ...prev,
+                    {
+                      id: `${Date.now()}_ai_${Math.random().toString(36).slice(2)}`,
+                      threadId: threadIdFromData,
+                      role: "assistant" as const,
+                      content: token,
+                      timestamp: Date.now(),
+                    },
+                  ];
+                }
+              });
             }
-          } else if (Object.keys(rawData).length > 0) {
-            nodeContent = JSON.stringify(rawData, null, 2);
-            shouldShowNodeMessage = true;
-          } else {
             return;
           }
 
-          if (nodeName && nodeName !== "workflow" && shouldShowNodeMessage) {
+          // 处理节点输出和错误消息（不再提取 AI 消息，因为 token 流已经处理了）
+          if (messageType === "error") {
+            const nodeMsg: ChatMessage = {
+              id: `${Date.now()}_node_${Math.random().toString(36).slice(2)}`,
+              threadId: threadIdFromData,
+              role: "node",
+              content: `Error: ${rawData.error || "Unknown error"}`,
+              nodeName: nodeName || "workflow",
+              messageType: "error",
+              timestamp: Date.now(),
+            };
+            setMessages((prev) => [...prev, nodeMsg]);
+            return;
+          }
+
+          // 处理节点输出（output/start）：只显示节点信息，不提取 AI 消息
+          if (nodeName && nodeName !== "workflow" && messageType !== "token") {
+            const nodeContent = JSON.stringify(rawData, null, 2);
             const nodeMsg: ChatMessage = {
               id: `${Date.now()}_node_${Math.random().toString(36).slice(2)}`,
               threadId: threadIdFromData,
@@ -112,26 +243,15 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
             setMessages((prev) => [...prev, nodeMsg]);
           }
 
-          if (extractedAiMessage && extractedAiMessage.content.trim()) {
-            setMessages((prev) => {
-              const lastMsg = prev[prev.length - 1];
-              if (
-                lastMsg?.role === "assistant" &&
-                lastMsg.content === extractedAiMessage!.content
-              ) {
-                return prev;
-              }
-              return [...prev, extractedAiMessage!];
-            });
-          }
-
           // 更新线程时间戳
           const updateTime = Date.now();
-          setThreads((prev) =>
-            prev.map((t) =>
+          setThreads((prev) => {
+            const updated = prev.map((t) =>
               t.id === threadIdFromData ? { ...t, lastUpdated: updateTime } : t,
-            ),
-          );
+            );
+            saveThreadsToStorage(updated);
+            return updated;
+          });
         } catch {
           // ignore malformed messages
         }
@@ -150,7 +270,7 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
 
   const sendMessage = useCallback(
     async (content: string) => {
-      const threadId = ensureThread();
+      const threadId = await ensureThread();
       const userMessage: ChatMessage = {
         id: `${Date.now()}_user`,
         threadId,
@@ -159,11 +279,13 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, userMessage]);
-      setThreads((prev) =>
-        prev.map((t) =>
+      setThreads((prev) => {
+        const updated = prev.map((t) =>
           t.id === threadId ? { ...t, lastUpdated: userMessage.timestamp } : t,
-        ),
-      );
+        );
+        saveThreadsToStorage(updated);
+        return updated;
+      });
 
       attachWebSocket(threadId);
 

@@ -97,7 +97,9 @@
 - **Redis Pub/Sub**: 使用 `workflow:{thread_id}:{node_name}:{message_type}` 频道命名，实现节点级实时推送
 - **WebSocket**: 通过 `/ws/{thread_id}` 端点代理 Redis 消息到前端，支持多客户端订阅
 - **消息序列化**: 使用 `message_to_dict()` 处理 LangChain `AIMessage` 对象，避免 JSON 序列化错误
-- **前端消息解析**: 从 `data.messages` 数组中提取 AI 回复，节点输出可折叠显示 JSON 详情
+- **混合流模式**: 使用 `stream_mode=["messages", "updates"]` 实现 token 级别流式输出和节点状态更新
+- **前端消息组织**: 消息组织为 Turn（对话轮次）结构，包含用户消息、节点执行时间轴、AI 回复
+- **节点执行可视化**: 纵向时间轴展示节点执行过程，支持展开/折叠查看详细信息
 
 ### Testing Strategy
 

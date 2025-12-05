@@ -1,97 +1,176 @@
 import type { FC } from "react";
-import { useEffect, useRef } from "react";
-import type { ChatMessage } from "../types";
+import { useEffect, useRef, useMemo, useState } from "react";
+import type { ChatMessage, NodeStep } from "../types";
+import TurnView from "./TurnView";
+import blackholeIcon from "../../icon/黑洞.png";
+
+const SettingsMenu: FC = () => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    const saved = localStorage.getItem("theme");
+    return (saved as "dark" | "light") || "dark";
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("theme", theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+    setIsOpen(false);
+  };
+
+  return (
+    <div className="settings-menu-wrapper">
+      <button
+        className="chat-settings-btn"
+        onClick={() => setIsOpen(!isOpen)}
+        title="Settings"
+        aria-label="Settings"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24" />
+        </svg>
+      </button>
+      {isOpen && (
+        <div className="settings-dropdown">
+          <button onClick={toggleTheme} className="settings-menu-item">
+            {theme === "dark" ? "切换到浅色模式" : "切换到暗黑模式"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface ChatWindowProps {
   messages: ChatMessage[];
+  onNewThread?: () => void;
+  onToggleSidebar?: () => void;
 }
 
-const ChatWindow: FC<ChatWindowProps> = ({ messages }) => {
+const ChatWindow: FC<ChatWindowProps> = ({ messages, onNewThread, onToggleSidebar }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const formatNodeContent = (content: string): string => {
-    try {
-      const parsed = JSON.parse(content);
-      // 如果是JSON，尝试提取有意义的信息
-      if (parsed.messages && Array.isArray(parsed.messages)) {
-        const aiMsg = parsed.messages.find((m: any) => m.type === "ai");
-        if (aiMsg?.data?.content) {
-          return aiMsg.data.content;
+  // 组织消息为 Turn 结构
+  const turns = useMemo(() => {
+    const turns: Array<{
+      userMessage: ChatMessage;
+      nodeSteps: NodeStep[];
+      assistantMessage: ChatMessage | null;
+    }> = [];
+
+    let currentTurn: {
+      userMessage: ChatMessage | null;
+      nodeSteps: NodeStep[];
+      assistantMessage: ChatMessage | null;
+    } = {
+      userMessage: null,
+      nodeSteps: [],
+      assistantMessage: null,
+    };
+
+    for (const msg of messages) {
+      if (msg.role === "user") {
+        // 如果已有 turn，先保存
+        if (currentTurn.userMessage) {
+          turns.push({
+            userMessage: currentTurn.userMessage,
+            nodeSteps: currentTurn.nodeSteps,
+            assistantMessage: currentTurn.assistantMessage,
+          });
+        }
+        // 开始新 turn
+        currentTurn = {
+          userMessage: msg,
+          nodeSteps: [],
+          assistantMessage: null,
+        };
+      } else if (msg.role === "node") {
+        // 添加到当前 turn 的节点步骤
+        const step: NodeStep = {
+          id: msg.id,
+          nodeName: msg.nodeName || "unknown",
+          status:
+            msg.messageType === "start"
+              ? "start"
+              : msg.messageType === "error"
+              ? "error"
+              : msg.messageType === "token"
+              ? "running"
+              : "completed",
+          messageType: (msg.messageType as any) || "output",
+          timestamp: msg.timestamp,
+          data: msg.content.trim().startsWith("{") ? JSON.parse(msg.content) : null,
+        };
+        currentTurn.nodeSteps.push(step);
+      } else if (msg.role === "assistant") {
+        // 更新当前 turn 的 assistant 消息
+        if (currentTurn.assistantMessage) {
+          // 如果已存在，更新内容（token 流式更新）
+          currentTurn.assistantMessage.content = msg.content;
+          currentTurn.assistantMessage.timestamp = msg.timestamp;
+        } else {
+          // 否则创建新的
+          currentTurn.assistantMessage = msg;
         }
       }
-      return content;
-    } catch {
-      return content;
     }
-  };
+
+    // 保存最后一个 turn
+    if (currentTurn.userMessage) {
+      turns.push({
+        userMessage: currentTurn.userMessage,
+        nodeSteps: currentTurn.nodeSteps,
+        assistantMessage: currentTurn.assistantMessage,
+      });
+    }
+
+    return turns;
+  }, [messages]);
 
   return (
     <main className="chat-window">
       <header className="chat-header">
-        <div className="chat-title">Chat LangGraph</div>
-        <div className="chat-subtitle">
-          Streaming RAG Agent with Redis + LangGraph
+        <div className="chat-header-left">
+          <div className="chat-brand-logo">
+            <img src={blackholeIcon} alt="GravAIty" className="blackhole-icon" width="24" height="24" />
+          </div>
+          <div className="chat-brand-name">GravAIty</div>
+        </div>
+        <div className="chat-header-center">
+          {/* 主对话框区域，可以留空或添加其他内容 */}
+        </div>
+        <div className="chat-header-right">
+          {/* 留空 */}
+        </div>
+        <div className="chat-header-actions">
+          <SettingsMenu />
+          <button className="chat-new-thread-btn" onClick={onNewThread}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            </svg>
+            New Chat
+          </button>
         </div>
       </header>
       <div className="chat-messages">
-        {messages.map((m) => {
-          const isUser = m.role === "user";
-          const isNode = m.role === "node";
-          const isAssistant = m.role === "assistant";
-
-          // 节点消息：只在开发模式下显示，或者显示简化版本
-          if (isNode) {
-            const isJson = m.content.trim().startsWith("{");
-            return (
-              <div key={m.id} className="chat-message chat-message-node">
-                <div className="chat-message-meta">
-                  <span className="node-badge">{m.nodeName ?? "node"}</span>
-                  {m.messageType && (
-                    <span className="node-type">{m.messageType}</span>
-                  )}
-                </div>
-                {isJson ? (
-                  <details className="node-details">
-                    <summary className="node-summary">View details</summary>
-                    <pre className="node-json">{m.content}</pre>
-                  </details>
-                ) : (
-                  <div className="chat-message-content">{m.content}</div>
-                )}
-              </div>
-            );
-          }
-
-          // 用户和助手消息
-          return (
-            <div
-              key={m.id}
-              className={
-                "chat-message" +
-                (isUser
-                  ? " chat-message-user"
-                  : isAssistant
-                  ? " chat-message-assistant"
-                  : "")
-              }
-            >
-              <div className="chat-message-meta">
-                {isUser ? "You" : "Assistant"}
-              </div>
-              <div className="chat-message-content">
-                {m.content.split("\n").map((line, idx) => (
-                  <div key={idx}>{line}</div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
+        {turns.map((turn, idx) => (
+          <TurnView
+            key={turn.userMessage.id}
+            userMessage={turn.userMessage}
+            nodeSteps={turn.nodeSteps}
+            assistantMessage={turn.assistantMessage}
+          />
+        ))}
         <div ref={messagesEndRef} />
-        {messages.length === 0 && (
+        {turns.length === 0 && (
           <div className="chat-empty-hint">
             Start a conversation by typing in the box below.
           </div>

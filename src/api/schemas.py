@@ -89,5 +89,40 @@ class StreamStartResponse(BaseModel):
     status: str = "streaming"
 
 
-__all__ = ["ChatRequest", "ChatResponse", "StreamStartResponse", "Message"]
+class HistoryMessage(BaseModel):
+    """历史消息项。
+
+    字段：
+    - role: 消息角色（"user"、"assistant"、"system"）
+    - content: 消息内容文本
+    - timestamp: 消息时间戳（可选）
+    """
+
+    role: Literal["user", "assistant", "system"]
+    content: str
+    timestamp: Optional[float] = None
+
+
+class ThreadHistory(BaseModel):
+    """线程的完整历史记录。
+
+    字段：
+    - thread_id: 会话线程标识
+    - messages: 历史消息列表
+    - total_messages: 消息总数
+    """
+
+    thread_id: str
+    messages: list[HistoryMessage]
+    total_messages: int
+
+
+__all__ = [
+    "ChatRequest",
+    "ChatResponse",
+    "StreamStartResponse",
+    "Message",
+    "HistoryMessage",
+    "ThreadHistory",
+]
 

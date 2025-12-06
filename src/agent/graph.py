@@ -13,6 +13,7 @@ from functools import lru_cache
 from typing import List, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.store.base import BaseStore
@@ -74,19 +75,21 @@ def _extract_retrieved_context(messages: List) -> str:
 # Graph Nodes (async)
 # ============================================================================
 
-async def query_or_respond(state: MessagesState, config: Optional[dict] = None):
+async def query_or_respond(state: MessagesState, config: Optional[RunnableConfig] = None):
     """Call LLM with retrieval tool to decide if documents are needed.
     
     Args:
         state: MessagesState with user question
-        config: Optional LangGraph config dict containing configurable parameters
+        config: Optional LangGraph config containing configurable parameters
         
     Returns:
         dict: Updated state with AI response (includes tool_calls if retrieval needed)
     """
     # Extract chat_model from config if provided
     chat_model = None
-    if config and "configurable" in config:
+    if config and hasattr(config, "configurable") and config.configurable:
+        chat_model = config.configurable.get("chat_model")
+    elif config and isinstance(config, dict) and "configurable" in config:
         chat_model = config["configurable"].get("chat_model")
     
     llm = _get_llm(chat_model)
@@ -97,19 +100,21 @@ async def query_or_respond(state: MessagesState, config: Optional[dict] = None):
     return {"messages": [response]}
 
 
-async def generate(state: MessagesState, config: Optional[dict] = None):
+async def generate(state: MessagesState, config: Optional[RunnableConfig] = None):
     """Generate answer based on retrieved documents.
     
     Args:
         state: MessagesState with conversation history and retrieved documents
-        config: Optional LangGraph config dict containing configurable parameters
+        config: Optional LangGraph config containing configurable parameters
         
     Returns:
         dict: Updated state with final answer
     """
     # Extract chat_model from config if provided
     chat_model = None
-    if config and "configurable" in config:
+    if config and hasattr(config, "configurable") and config.configurable:
+        chat_model = config.configurable.get("chat_model")
+    elif config and isinstance(config, dict) and "configurable" in config:
         chat_model = config["configurable"].get("chat_model")
     
     question = _extract_user_question(state["messages"])

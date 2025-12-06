@@ -14,7 +14,7 @@ export interface NodeStep {
   id: string;
   nodeName: string;
   status: "start" | "running" | "completed" | "error";
-  messageType: "start" | "output" | "token" | "error";
+  messageType: "start" | "output" | "token" | "error" | "custom";
   timestamp: number;
   executionTimeMs?: number;
   data?: any;

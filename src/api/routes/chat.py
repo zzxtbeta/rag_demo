@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
 from api.dependencies import get_graph, get_redis_publisher
+from db.checkpointer import CheckpointerManager
 from api.schemas import (
     ChatRequest,
     ChatResponse,
@@ -18,6 +19,7 @@ from api.schemas import (
     ThreadHistory,
 )
 from api.utils import extract_content
+from langchain_core.messages import AIMessage, BaseMessage
 from config.settings import get_settings
 from infra.redis_pubsub import RedisPublisher, StreamMessage
 
@@ -117,10 +119,10 @@ async def _stream_workflow_to_redis(
 
     ✅ 流程：
     1. 发布工作流开始事件（workflow:start）
-    2. 使用 stream_mode=["messages", "updates"] 混合模式流式执行 graph.astream
+    2. 使用 stream_mode=["updates", "messages"] 混合模式流式执行 graph.astream
     3. 处理两种类型的流式输出：
-       - "messages" 模式：发布 token 级别的流式消息（message_chunk, metadata）
        - "updates" 模式：发布节点状态更新（节点开始/完成事件）
+       - "messages" 模式：发布 token 级别的流式消息（message_chunk, metadata）
     4. 工作流完成后发布 workflow:complete（包含所有节点时间统计）
     5. 发生错误时发布 workflow:error（区分超时、取消、执行错误）
 
@@ -171,48 +173,44 @@ async def _stream_workflow_to_redis(
         async for stream_mode, chunk in graph.astream(
             payload,
             config,
-            stream_mode=["messages", "updates"],
+            stream_mode=["updates", "messages"],
         ):
             if stream_mode == "messages":
                 # messages 模式：chunk 是 (message_chunk, metadata) 元组
+                # 用于流式输出 LLM 生成的 token
                 message_chunk, metadata = chunk
-                node_name = metadata.get("node", "unknown")
+                node_name = metadata.get("langgraph_node", "unknown")
                 
-                # 提取 token 内容：优先从对象属性获取，否则从规范化后的字典获取
-                token_content = ""
-                if hasattr(message_chunk, "content"):
-                    # 直接访问 AIMessageChunk 的 content 属性
-                    token_content = str(message_chunk.content) if message_chunk.content else ""
-                elif hasattr(message_chunk, "text"):
-                    # 备用：访问 text 属性
-                    token_content = str(message_chunk.text) if message_chunk.text else ""
-                else:
-                    # 规范化后从字典提取
-                    normalized_chunk = _normalize_update(message_chunk)
-                    if isinstance(normalized_chunk, dict):
-                        if "content" in normalized_chunk:
-                            token_content = str(normalized_chunk["content"])
-                        elif "data" in normalized_chunk and isinstance(normalized_chunk["data"], dict):
-                            token_content = str(normalized_chunk["data"].get("content", ""))
-                        elif isinstance(normalized_chunk.get("text"), str):
-                            token_content = normalized_chunk["text"]
-                
-                # 规范化消息块和元数据用于完整信息
-                normalized_chunk = _normalize_update(message_chunk)
-                normalized_metadata = _normalize_update(metadata)
-                
-                # 发布 token 级别的消息
-                await publisher.publish_node_output(
-                    thread_id=thread_id,
-                    node_name=node_name,
-                    data={
-                        "token": token_content,
-                        "chunk": normalized_chunk,
-                        "metadata": normalized_metadata,
-                    },
-                    status="streaming",
-                    message_type="token",
-                )
+                # 只处理 LLM 节点的 token（query_or_respond 和 generate）
+                if node_name in ("query_or_respond", "generate"):
+                    # 提取 token 内容
+                    token_content = ""
+                    if hasattr(message_chunk, "content"):
+                        token_content = str(message_chunk.content) if message_chunk.content else ""
+                    elif hasattr(message_chunk, "text"):
+                        token_content = str(message_chunk.text) if message_chunk.text else ""
+                    else:
+                        # 规范化后从字典提取
+                        normalized_chunk = _normalize_update(message_chunk)
+                        if isinstance(normalized_chunk, dict):
+                            if "content" in normalized_chunk:
+                                token_content = str(normalized_chunk["content"])
+                            elif isinstance(normalized_chunk.get("text"), str):
+                                token_content = normalized_chunk["text"]
+                    
+                    # 只发送非空的 token
+                    if token_content:
+                        await publisher.publish_node_output(
+                            thread_id=thread_id,
+                            node_name=node_name,
+                            data={
+                                "token": token_content,
+                                "chunk": _normalize_update(message_chunk),
+                                "metadata": _normalize_update(metadata),
+                            },
+                            status="streaming",
+                            message_type="token",
+                        )
                 
             elif stream_mode == "updates":
                 # updates 模式：chunk 是 {node_name: update} 字典
@@ -236,6 +234,7 @@ async def _stream_workflow_to_redis(
                     elapsed_ms = (time.perf_counter() - node_start_time) * 1000
                     node_times[node_name] = elapsed_ms
 
+                    # 发布节点完成事件
                     await publisher.publish_node_output(
                         thread_id=thread_id,
                         node_name=node_name,
@@ -434,6 +433,75 @@ async def get_thread_history(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch thread history: {str(exc)}",
         ) from exc
+
+
+@router.delete("/threads/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_thread(thread_id: str):
+    """删除指定线程的所有 checkpoint 记录。
+
+    ✅ 流程：
+    1. 获取 checkpointer 实例
+    2. 调用 checkpointer.delete_thread() 删除所有 checkpoint
+    3. 返回 204 No Content
+
+    参数：
+    - thread_id: 要删除的会话线程标识
+
+    返回：
+    - 204 No Content: 删除成功
+
+    注意：
+    - 删除是永久的，无法恢复
+    - 会删除该 thread_id 的所有 checkpoint 记录
+    """
+    try:
+        # 根据实际的 LangGraph checkpoint 表结构删除（4张表）：
+        # - checkpoint_writes: 存储 checkpoint 写入数据（依赖 checkpoint_id）
+        # - checkpoint_blobs: 存储 checkpoint 二进制数据
+        # - checkpoints: 存储 checkpoint 元数据（主表）
+        # - checkpoint_migrations: 迁移版本表（不需要删除）
+        from db.database import DatabaseManager
+        
+        pool = await DatabaseManager.get_pool()
+        async with pool.connection() as conn:
+            async with conn.cursor() as cur:
+                # 按依赖顺序删除：先删除依赖表，再删除主表
+                # 1. 删除 checkpoint_writes（依赖 checkpoint_id）
+                await cur.execute(
+                    "DELETE FROM checkpoint_writes WHERE thread_id = %s",
+                    (thread_id,),
+                )
+                writes_deleted = cur.rowcount
+                
+                # 2. 删除 checkpoint_blobs
+                await cur.execute(
+                    "DELETE FROM checkpoint_blobs WHERE thread_id = %s",
+                    (thread_id,),
+                )
+                blobs_deleted = cur.rowcount
+                
+                # 3. 删除 checkpoints（主表）
+                await cur.execute(
+                    "DELETE FROM checkpoints WHERE thread_id = %s",
+                    (thread_id,),
+                )
+                checkpoints_deleted = cur.rowcount
+                
+                await conn.commit()
+                
+                logger.info(
+                    f"Successfully deleted {checkpoints_deleted} checkpoints, "
+                    f"{writes_deleted} checkpoint_writes, "
+                    f"and {blobs_deleted} checkpoint_blobs for thread {thread_id}"
+                )
+        
+        return None
+    except Exception as exc:
+        logger.exception(f"Failed to delete thread {thread_id}: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete thread: {str(exc)}",
+        )
 
 
 __all__ = ["router"]

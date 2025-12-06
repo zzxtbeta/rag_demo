@@ -13,6 +13,8 @@ function App() {
     sendMessage,
     switchThread,
     createThread,
+    deleteThread,
+    updateThreadTitle,
     chatModel,
     setChatModel,
   } = useChatStream("zzxt");
@@ -31,6 +33,7 @@ function App() {
           activeThreadId={activeThreadId}
           onSelect={switchThread}
           onNewThread={createThread}
+          onDeleteThread={deleteThread}
           userId="zzxt"
           onToggleSidebar={toggleSidebar}
         />

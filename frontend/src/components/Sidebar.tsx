@@ -7,6 +7,7 @@ interface SidebarProps {
   activeThreadId: string | null;
   onSelect: (threadId: string) => void;
   onNewThread: () => void;
+  onDeleteThread: (threadId: string) => Promise<void>;
   userId?: string;
   onToggleSidebar?: () => void;
 }
@@ -16,11 +17,15 @@ const Sidebar: FC<SidebarProps> = ({
   activeThreadId,
   onSelect,
   onNewThread,
+  onDeleteThread,
   userId = "zzxt",
   onToggleSidebar,
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
-  const [visibleThreadIds, setVisibleThreadIds] = useState<Set<string>>(new Set());
+  const [hoveredThreadId, setHoveredThreadId] = useState<string | null>(null);
+  const [menuOpenThreadId, setMenuOpenThreadId] = useState<string | null>(null);
+  const [copiedThreadId, setCopiedThreadId] = useState<string | null>(null);
+  const [showCopyToast, setShowCopyToast] = useState(false);
 
   const formatTime = (timestamp: number) => {
     const now = Date.now();
@@ -35,16 +40,37 @@ const Sidebar: FC<SidebarProps> = ({
     return `${days} day${days > 1 ? "s" : ""} ago`;
   };
 
-  const toggleThreadIdVisibility = (threadId: string) => {
-    setVisibleThreadIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(threadId)) {
-        next.delete(threadId);
-      } else {
-        next.add(threadId);
+  const copyThreadId = async (threadId: string) => {
+    try {
+      await navigator.clipboard.writeText(threadId);
+      setCopiedThreadId(threadId);
+      setShowCopyToast(true);
+      setTimeout(() => {
+        setCopiedThreadId(null);
+        setShowCopyToast(false);
+      }, 1000);
+    } catch (error) {
+      console.error("Failed to copy thread ID:", error);
+      // 降级方案：使用传统方法
+      const textArea = document.createElement("textarea");
+      textArea.value = threadId;
+      textArea.style.position = "fixed";
+      textArea.style.opacity = "0";
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand("copy");
+        setCopiedThreadId(threadId);
+        setShowCopyToast(true);
+        setTimeout(() => {
+          setCopiedThreadId(null);
+          setShowCopyToast(false);
+        }, 1000);
+      } catch (err) {
+        console.error("Fallback copy failed:", err);
       }
-      return next;
-    });
+      document.body.removeChild(textArea);
+    }
   };
 
   const filteredThreads = threads.filter((thread) =>
@@ -110,6 +136,8 @@ const Sidebar: FC<SidebarProps> = ({
                     className={`sidebar-thread-wrapper ${
                       thread.id === activeThreadId ? "sidebar-thread-active" : ""
                     }`}
+                    onMouseEnter={() => setHoveredThreadId(thread.id)}
+                    onMouseLeave={() => setHoveredThreadId(null)}
                   >
                     <button
                       className="sidebar-thread"
@@ -118,40 +146,67 @@ const Sidebar: FC<SidebarProps> = ({
                       <div className="sidebar-thread-title">{thread.title}</div>
                       <div className="sidebar-thread-time">{formatTime(thread.lastUpdated)}</div>
                     </button>
-                    <button
-                      className="sidebar-thread-id-toggle"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleThreadIdVisibility(thread.id);
-                      }}
-                      title={visibleThreadIds.has(thread.id) ? "隐藏 Thread ID" : "显示 Thread ID"}
-                    >
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        {visibleThreadIds.has(thread.id) ? (
-                          <>
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                            <circle cx="12" cy="12" r="3" />
-                            <path d="M9 9l6 6M15 9l-6 6" />
-                          </>
-                        ) : (
-                          <>
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                            <circle cx="12" cy="12" r="3" />
-                          </>
+                    {hoveredThreadId === thread.id && (
+                      <div className="sidebar-thread-menu-wrapper">
+                        <button
+                          className="sidebar-thread-menu-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuOpenThreadId(menuOpenThreadId === thread.id ? null : thread.id);
+                          }}
+                          title="更多选项"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                            <circle cx="12" cy="5" r="2" />
+                            <circle cx="12" cy="12" r="2" />
+                            <circle cx="12" cy="19" r="2" />
+                          </svg>
+                        </button>
+                        {menuOpenThreadId === thread.id && (
+                          <div className="sidebar-thread-menu">
+                            <button
+                              className="sidebar-thread-menu-item"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                copyThreadId(thread.id);
+                                setMenuOpenThreadId(null);
+                              }}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                {copiedThreadId === thread.id ? (
+                                  <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+                                ) : (
+                                  <>
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                                  </>
+                                )}
+                              </svg>
+                              {copiedThreadId === thread.id ? "已复制" : "复制 ID"}
+                            </button>
+                            <button
+                              className="sidebar-thread-menu-item sidebar-thread-menu-item-danger"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (confirm("确定要删除这个会话吗？此操作无法撤销。")) {
+                                  try {
+                                    await onDeleteThread(thread.id);
+                                  } catch (error) {
+                                    console.error("Failed to delete thread:", error);
+                                    alert("删除失败，请重试");
+                                  }
+                                }
+                                setMenuOpenThreadId(null);
+                              }}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              </svg>
+                              删除
+                            </button>
+                          </div>
                         )}
-                      </svg>
-                    </button>
-                    {visibleThreadIds.has(thread.id) && (
-                      <div className="sidebar-thread-id">{thread.id}</div>
+                      </div>
                     )}
                   </div>
                 ))}
@@ -168,6 +223,8 @@ const Sidebar: FC<SidebarProps> = ({
                     className={`sidebar-thread-wrapper ${
                       thread.id === activeThreadId ? "sidebar-thread-active" : ""
                     }`}
+                    onMouseEnter={() => setHoveredThreadId(thread.id)}
+                    onMouseLeave={() => setHoveredThreadId(null)}
                   >
                     <button
                       className="sidebar-thread"
@@ -176,40 +233,67 @@ const Sidebar: FC<SidebarProps> = ({
                       <div className="sidebar-thread-title">{thread.title}</div>
                       <div className="sidebar-thread-time">{formatTime(thread.lastUpdated)}</div>
                     </button>
-                    <button
-                      className="sidebar-thread-id-toggle"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleThreadIdVisibility(thread.id);
-                      }}
-                      title={visibleThreadIds.has(thread.id) ? "隐藏 Thread ID" : "显示 Thread ID"}
-                    >
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        {visibleThreadIds.has(thread.id) ? (
-                          <>
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                            <circle cx="12" cy="12" r="3" />
-                            <path d="M9 9l6 6M15 9l-6 6" />
-                          </>
-                        ) : (
-                          <>
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                            <circle cx="12" cy="12" r="3" />
-                          </>
+                    {hoveredThreadId === thread.id && (
+                      <div className="sidebar-thread-menu-wrapper">
+                        <button
+                          className="sidebar-thread-menu-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuOpenThreadId(menuOpenThreadId === thread.id ? null : thread.id);
+                          }}
+                          title="更多选项"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                            <circle cx="12" cy="5" r="2" />
+                            <circle cx="12" cy="12" r="2" />
+                            <circle cx="12" cy="19" r="2" />
+                          </svg>
+                        </button>
+                        {menuOpenThreadId === thread.id && (
+                          <div className="sidebar-thread-menu">
+                            <button
+                              className="sidebar-thread-menu-item"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                copyThreadId(thread.id);
+                                setMenuOpenThreadId(null);
+                              }}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                {copiedThreadId === thread.id ? (
+                                  <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+                                ) : (
+                                  <>
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                                  </>
+                                )}
+                              </svg>
+                              {copiedThreadId === thread.id ? "已复制" : "复制 ID"}
+                            </button>
+                            <button
+                              className="sidebar-thread-menu-item sidebar-thread-menu-item-danger"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (confirm("确定要删除这个会话吗？此操作无法撤销。")) {
+                                  try {
+                                    await onDeleteThread(thread.id);
+                                  } catch (error) {
+                                    console.error("Failed to delete thread:", error);
+                                    alert("删除失败，请重试");
+                                  }
+                                }
+                                setMenuOpenThreadId(null);
+                              }}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              </svg>
+                              删除
+                            </button>
+                          </div>
                         )}
-                      </svg>
-                    </button>
-                    {visibleThreadIds.has(thread.id) && (
-                      <div className="sidebar-thread-id">{thread.id}</div>
+                      </div>
                     )}
                   </div>
                 ))}
@@ -233,9 +317,17 @@ const Sidebar: FC<SidebarProps> = ({
             </svg>
           </button>
         </div>
-      </div>
-    </aside>
-  );
-};
+        </div>
+        {showCopyToast && (
+          <div className="sidebar-copy-toast">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            已复制到剪贴板
+          </div>
+        )}
+      </aside>
+    );
+  };
 
 export default Sidebar;

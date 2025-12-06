@@ -15,6 +15,8 @@ interface UseChatStreamResult {
   sendMessage: (content: string) => Promise<void>;
   switchThread: (threadId: string) => Promise<void>;
   createThread: () => void;
+  deleteThread: (threadId: string) => Promise<void>;
+  updateThreadTitle: (threadId: string, title: string) => void;
   chatModel: string;
   setChatModel: (model: string) => void;
 }
@@ -115,6 +117,15 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
     return id;
   }, [activeThreadId, userId]);
 
+  // 从第一条用户消息提取标题（前30个字符）
+  const generateTitleFromMessage = useCallback((content: string): string => {
+    const trimmed = content.trim();
+    if (!trimmed) return "New Chat";
+    // 移除换行和多余空格
+    const singleLine = trimmed.replace(/\s+/g, " ").substring(0, 30);
+    return singleLine || "New Chat";
+  }, []);
+
   const loadThreadHistory = useCallback(async (threadId: string) => {
     try {
       const response = await fetch(`${API_BASE}/chat/threads/${encodeURIComponent(threadId)}/history`);
@@ -138,12 +149,29 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
       }));
       
       setMessages(historyMessages);
+
+      // 如果标题还是 "New Chat"，从第一条用户消息提取标题
+      const firstUserMessage = historyMessages.find((msg) => msg.role === "user");
+      if (firstUserMessage) {
+        setThreads((prev) => {
+          const thread = prev.find((t) => t.id === threadId);
+          if (thread && thread.title === "New Chat") {
+            const newTitle = generateTitleFromMessage(firstUserMessage.content);
+            const updated = prev.map((t) =>
+              t.id === threadId ? { ...t, title: newTitle } : t,
+            );
+            saveThreadsToStorage(updated);
+            return updated;
+          }
+          return prev;
+        });
+      }
     } catch (error) {
       console.error("Failed to load thread history:", error);
       // 如果加载失败，至少清空当前消息
       setMessages([]);
     }
-  }, []);
+  }, [generateTitleFromMessage]);
 
   const switchThread = useCallback(
     async (threadId: string) => {
@@ -189,13 +217,14 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
             return;
           }
 
-          // 处理 token 级别的流式消息
+
+          // 处理 token 级别的流式消息（messages 模式）
           if (messageType === "token") {
             const token = rawData.token || "";
             if (token) {
               setMessages((prev) => {
                 const lastMsg = prev[prev.length - 1];
-                // 如果最后一条消息是 assistant 消息，追加 token
+                // 流式追加 token：如果最后一条是 assistant 消息，追加 token
                 if (lastMsg?.role === "assistant") {
                   return prev.map((msg, idx) =>
                     idx === prev.length - 1
@@ -220,7 +249,7 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
             return;
           }
 
-          // 处理节点输出和错误消息（不再提取 AI 消息，因为 token 流已经处理了）
+          // 处理节点输出和错误消息
           if (messageType === "error") {
             const nodeMsg: ChatMessage = {
               id: `${Date.now()}_node_${Math.random().toString(36).slice(2)}`,
@@ -235,19 +264,66 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
             return;
           }
 
-          // 处理节点输出（output/start）：只显示节点信息，不提取 AI 消息
+          // 处理节点输出（output/start）：只显示节点信息
+          // 对于 tools 节点，只保留 start 和 output，避免重复的 running 状态
           if (nodeName && nodeName !== "workflow" && messageType !== "token") {
-            const nodeContent = JSON.stringify(rawData, null, 2);
-            const nodeMsg: ChatMessage = {
-              id: `${Date.now()}_node_${Math.random().toString(36).slice(2)}`,
-              threadId: threadIdFromData,
-              role: "node",
-              content: nodeContent,
-              nodeName: nodeName,
-              messageType: messageType,
-              timestamp: Date.now(),
-            };
-            setMessages((prev) => [...prev, nodeMsg]);
+            // 对于 tools 节点，如果是 output 类型，检查是否已有该节点的 start 消息
+            // 这样可以避免显示多个 running 状态
+            if (nodeName === "tools" && messageType === "output") {
+              setMessages((prev) => {
+                // 检查是否已有该节点的 start 消息
+                const hasStart = prev.some(
+                  (msg) => msg.nodeName === nodeName && msg.messageType === "start"
+                );
+                if (!hasStart) {
+                  // 如果没有 start，先添加 start 消息
+                  const startMsg: ChatMessage = {
+                    id: `${Date.now()}_node_start_${Math.random().toString(36).slice(2)}`,
+                    threadId: threadIdFromData,
+                    role: "node",
+                    content: JSON.stringify({ status: "starting" }, null, 2),
+                    nodeName: nodeName,
+                    messageType: "start",
+                    timestamp: Date.now(),
+                  };
+                  const outputMsg: ChatMessage = {
+                    id: `${Date.now()}_node_${Math.random().toString(36).slice(2)}`,
+                    threadId: threadIdFromData,
+                    role: "node",
+                    content: JSON.stringify(rawData, null, 2),
+                    nodeName: nodeName,
+                    messageType: messageType,
+                    timestamp: Date.now(),
+                  };
+                  return [...prev, startMsg, outputMsg];
+                } else {
+                  // 已有 start，只添加 output
+                  const outputMsg: ChatMessage = {
+                    id: `${Date.now()}_node_${Math.random().toString(36).slice(2)}`,
+                    threadId: threadIdFromData,
+                    role: "node",
+                    content: JSON.stringify(rawData, null, 2),
+                    nodeName: nodeName,
+                    messageType: messageType,
+                    timestamp: Date.now(),
+                  };
+                  return [...prev, outputMsg];
+                }
+              });
+            } else {
+              // 其他节点正常处理
+              const nodeContent = JSON.stringify(rawData, null, 2);
+              const nodeMsg: ChatMessage = {
+                id: `${Date.now()}_node_${Math.random().toString(36).slice(2)}`,
+                threadId: threadIdFromData,
+                role: "node",
+                content: nodeContent,
+                nodeName: nodeName,
+                messageType: messageType,
+                timestamp: Date.now(),
+              };
+              setMessages((prev) => [...prev, nodeMsg]);
+            }
           }
 
           // 更新线程时间戳
@@ -280,6 +356,58 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
     localStorage.setItem(STORAGE_KEY_CHAT_MODEL, model);
   }, []);
 
+  const updateThreadTitle = useCallback((threadId: string, title: string) => {
+    setThreads((prev) => {
+      const updated = prev.map((t) =>
+        t.id === threadId ? { ...t, title } : t,
+      );
+      saveThreadsToStorage(updated);
+      return updated;
+    });
+  }, []);
+
+  const deleteThread = useCallback(
+    async (threadId: string) => {
+      try {
+        // 调用后端 API 删除 checkpoint
+        const response = await fetch(
+          `${API_BASE}/chat/threads/${encodeURIComponent(threadId)}`,
+          {
+            method: "DELETE",
+          },
+        );
+        if (!response.ok) {
+          throw new Error(`Failed to delete thread: ${response.statusText}`);
+        }
+
+        // 从本地状态中移除
+        setThreads((prev) => {
+          const updated = prev.filter((t) => t.id !== threadId);
+          saveThreadsToStorage(updated);
+          return updated;
+        });
+
+        // 如果删除的是当前活动线程，切换到其他线程或清空
+        if (activeThreadId === threadId) {
+          setThreads((prev) => {
+            if (prev.length > 0) {
+              setActiveThreadId(prev[0].id);
+              return prev;
+            } else {
+              setActiveThreadId(null);
+              setMessages([]);
+              return prev;
+            }
+          });
+        }
+      } catch (error) {
+        console.error("Failed to delete thread:", error);
+        throw error;
+      }
+    },
+    [activeThreadId],
+  );
+
   const sendMessage = useCallback(
     async (content: string) => {
       const threadId = await ensureThread();
@@ -291,12 +419,26 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, userMessage]);
+
+      // 如果是第一条用户消息，更新标题
       setThreads((prev) => {
-        const updated = prev.map((t) =>
-          t.id === threadId ? { ...t, lastUpdated: userMessage.timestamp } : t,
-        );
-        saveThreadsToStorage(updated);
-        return updated;
+        const thread = prev.find((t) => t.id === threadId);
+        if (thread && thread.title === "New Chat") {
+          const newTitle = generateTitleFromMessage(content);
+          const updated = prev.map((t) =>
+            t.id === threadId
+              ? { ...t, title: newTitle, lastUpdated: userMessage.timestamp }
+              : t,
+          );
+          saveThreadsToStorage(updated);
+          return updated;
+        } else {
+          const updated = prev.map((t) =>
+            t.id === threadId ? { ...t, lastUpdated: userMessage.timestamp } : t,
+          );
+          saveThreadsToStorage(updated);
+          return updated;
+        }
       });
 
       attachWebSocket(threadId);
@@ -314,7 +456,7 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
         }),
       });
     },
-    [ensureThread, attachWebSocket, userId, chatModel],
+    [ensureThread, attachWebSocket, userId, chatModel, generateTitleFromMessage],
   );
 
   useEffect(() => {
@@ -335,6 +477,8 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
     sendMessage,
     switchThread,
     createThread,
+    deleteThread,
+    updateThreadTitle,
     chatModel,
     setChatModel,
   };

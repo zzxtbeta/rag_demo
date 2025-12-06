@@ -153,6 +153,8 @@ const ChatWindow: FC<ChatWindowProps> = ({ messages, onNewThread, onToggleSideba
               ? "error"
               : msg.messageType === "token"
               ? "running"
+              : msg.messageType === "custom"
+              ? "running"
               : "completed",
           messageType: (msg.messageType as any) || "output",
           timestamp: msg.timestamp,

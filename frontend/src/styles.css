@@ -359,6 +359,53 @@ body {
   color: #e5e7eb;
 }
 
+.sidebar-copy-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(34, 197, 94, 0.95);
+  color: #ffffff;
+  padding: 12px 20px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 10000;
+  animation: toastFadeIn 0.2s ease-out, toastFadeOut 0.2s ease-in 0.8s forwards;
+}
+
+@keyframes toastFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes toastFadeOut {
+  from {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-10px);
+  }
+}
+
+[data-theme="light"] .sidebar-copy-toast {
+  background: rgba(34, 197, 94, 0.95);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
 .app-main {
   flex: 1;
   display: flex;
@@ -1348,6 +1395,163 @@ body {
   line-height: 1.5;
   overflow-x: auto;
   white-space: pre;
+}
+
+/* Sidebar Thread Menu Styles */
+.sidebar-thread-menu-wrapper {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+}
+
+.sidebar-thread-menu-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.sidebar-thread-menu-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #d1d5db;
+}
+
+.sidebar-thread-menu {
+  position: absolute;
+  right: 0;
+  top: 28px;
+  background: #1f2937;
+  border: 1px solid #374151;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  min-width: 120px;
+  z-index: 100;
+  overflow: hidden;
+}
+
+.sidebar-thread-menu-item {
+  width: 100%;
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  color: #e5e7eb;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  transition: background 0.2s;
+  text-align: left;
+}
+
+.sidebar-thread-menu-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-thread-menu-item-danger {
+  color: #ef4444;
+}
+
+.sidebar-thread-menu-item-danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+[data-theme="light"] .sidebar-thread-menu {
+  background: #ffffff;
+  border-color: #e5e7eb;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .sidebar-thread-menu-item {
+  color: #1f2937;
+}
+
+[data-theme="light"] .sidebar-thread-menu-item:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="light"] .sidebar-thread-menu-item-danger {
+  color: #dc2626;
+}
+
+[data-theme="light"] .sidebar-thread-menu-item-danger:hover {
+  background: rgba(220, 38, 38, 0.1);
+}
+
+/* Message Actions Styles */
+.message-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.message-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+  color: #9ca3af;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.message-action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #d1d5db;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.message-action-btn-active {
+  background: rgba(37, 99, 235, 0.2);
+  color: #60a5fa;
+  border-color: rgba(37, 99, 235, 0.4);
+}
+
+.message-action-btn-active:hover {
+  background: rgba(37, 99, 235, 0.3);
+  color: #93c5fd;
+}
+
+[data-theme="light"] .message-actions {
+  border-top-color: #e5e7eb;
+}
+
+[data-theme="light"] .message-action-btn {
+  border-color: #e5e7eb;
+  color: #6b7280;
+}
+
+[data-theme="light"] .message-action-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: #374151;
+  border-color: #d1d5db;
+}
+
+[data-theme="light"] .message-action-btn-active {
+  background: rgba(37, 99, 235, 0.1);
+  color: #2563eb;
+  border-color: rgba(37, 99, 235, 0.3);
+}
+
+[data-theme="light"] .message-action-btn-active:hover {
+  background: rgba(37, 99, 235, 0.15);
+  color: #1d4ed8;
 }
 
 

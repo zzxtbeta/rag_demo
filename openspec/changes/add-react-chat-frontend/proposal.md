@@ -1,5 +1,7 @@
 # Change: Add React-based chat frontend with streaming UI
 
+## Status: ✅ Completed
+
 ## Why
 
 ### 用户视角
@@ -83,8 +85,29 @@
 
 ## Impact
 
-- 新增 `frontend/` React 项目，对后端代码无破坏性改动。
-- 需要在 README 中添加前端运行说明和简单的“接入指南”（如何与 `/chat/stream` + `/ws/{thread_id}` 对接）。
-- 为后续更复杂的工作流可视化（节点图、进度条、错误高亮）打下基础。
+- ✅ 新增 `frontend/` React 项目，对后端代码无破坏性改动。
+- ✅ 已在 README 中添加前端运行说明和简单的"接入指南"（如何与 `/chat/stream` + `/ws/{thread_id}` 对接）。
+- ✅ 为后续更复杂的工作流可视化（节点图、进度条、错误高亮）打下基础。
+
+## Implementation Details
+
+### Streaming Mode
+- ✅ 使用混合流式模式：`stream_mode=["messages", "updates"]`
+- ✅ 支持 token 级流式输出（`message_type="token"`）和节点级更新（`message_type="output"`）
+- ✅ 前端区分处理 token 消息（实时追加）和节点完成消息（更新节点状态）
+
+### UI Components
+- ✅ `TurnView`：对话轮次视图（用户消息 + 节点时间轴 + AI 回复）
+- ✅ `NodeTimeline`：纵向时间轴展示节点执行过程
+- ✅ `NodeStep`：单个节点步骤（可展开/折叠查看 JSON）
+- ✅ `Sidebar`：线程列表、搜索、分组（TODAY/OLDER）、用户信息
+- ✅ `SettingsMenu`：主题切换菜单
+- ✅ `MessageInput`：优化的输入框（无 Send 按钮，Enter 发送）
+
+### Backend Integration
+- ✅ `/chat/stream`：启动工作流并返回 `thread_id`
+- ✅ `/ws/{thread_id}`：WebSocket 实时接收流式消息
+- ✅ `/chat/threads/{thread_id}/history`：获取历史消息
+- ✅ 错误处理：区分 `CancelledError`、`TimeoutError` 和一般异常
 
 

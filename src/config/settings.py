@@ -56,7 +56,7 @@ def _normalize_conn_string(conn_str: str) -> str:
 class Settings:
     """Immutable settings object loaded from environment variables."""
 
-    model_name: str
+    chat_model: str
     dascope_api_key: Optional[str]
     dascope_base_url: Optional[str]
     openai_embeddings_api_key: str
@@ -87,7 +87,7 @@ def get_settings() -> Settings:
     normalized_conn = _normalize_conn_string(raw_conn)
 
     return Settings(
-        model_name=os.getenv("MODEL_NAME", "qwen-plus-latest"),
+        chat_model=os.getenv("CHAT_MODEL", "qwen-plus-latest"),
         dascope_api_key=os.getenv("DASHSCOPE_API_KEY"),
         dascope_base_url=os.getenv("DASHSCOPE_BASE_URL"),
         openai_embeddings_api_key=_require_env("OPENAI_EMBEDDINGS_API_KEY"),
@@ -96,7 +96,7 @@ def get_settings() -> Settings:
         default_collection=os.getenv("VECTOR_COLLECTION", "pdf_documents"),
         chunk_size=_coerce_int("CHUNK_SIZE", 1000),
         chunk_overlap=_coerce_int("CHUNK_OVERLAP", 200),
-        retriever_top_k=_coerce_int("RETRIEVER_TOP_K", 2),
+        retriever_top_k=_coerce_int("RETRIEVER_TOP_K", 4),
         redis_url=os.getenv("REDIS_URL"),
         workflow_timeout_seconds=_coerce_int("WORKFLOW_TIMEOUT_SECONDS", 300),
     )

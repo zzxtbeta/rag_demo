@@ -31,6 +31,8 @@ class ChatRequest(BaseModel):
     - user_id: 用户标识（可选），用于记忆命名空间隔离
 
     - message: 用户查询内容
+
+    - chat_model: 聊天使用的模型名称（可选），如未指定则使用默认配置
     """
 
     thread_id: str = Field(..., description="Conversation thread identifier")
@@ -38,6 +40,9 @@ class ChatRequest(BaseModel):
         None, description="Optional user identifier for memory namespacing"
     )
     message: str = Field(..., description="User query content")
+    chat_model: Optional[str] = Field(
+        None, description="Optional chat model name (e.g., 'qwen-plus-latest', 'qwen-max-latest', 'qwen-flash')"
+    )
 
 
 class ChatResponse(BaseModel):

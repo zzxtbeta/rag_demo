@@ -88,6 +88,8 @@ async def chat_endpoint(req: ChatRequest, graph=Depends(get_graph)):
     config = {"configurable": {"thread_id": req.thread_id}}
     if req.user_id:
         config["configurable"]["user_id"] = req.user_id
+    if req.chat_model:
+        config["configurable"]["chat_model"] = req.chat_model
 
     payload = {"messages": [{"role": "user", "content": req.message}]}
     result = await graph.ainvoke(payload, config)
@@ -316,6 +318,8 @@ async def chat_stream_endpoint(
     config: dict[str, Any] = {"configurable": {"thread_id": req.thread_id}}
     if req.user_id:
         config["configurable"]["user_id"] = req.user_id
+    if req.chat_model:
+        config["configurable"]["chat_model"] = req.chat_model
 
     payload: dict[str, Any] = {
         "messages": [{"role": "user", "content": req.message}]

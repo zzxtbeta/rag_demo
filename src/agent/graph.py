@@ -18,6 +18,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.store.base import BaseStore
 
 from agent import prompts
+from config.settings import get_settings
 from tools.retrieval import retrieve_context
 from utils.llm import load_chat_model
 
@@ -26,17 +27,25 @@ from utils.llm import load_chat_model
 # Model
 # ============================================================================
 
-# DashScope Qwen-plus-latest for chat
-
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-@lru_cache(maxsize=1)
-def _get_llm():
-    """Return a cached chat model instance."""
-    return load_chat_model(temperature=0, max_retries=2)
+@lru_cache(maxsize=10)
+def _get_llm(chat_model: Optional[str] = None):
+    """Return a cached chat model instance.
+    
+    Args:
+        chat_model: Optional model name. If None, uses default from settings.
+    
+    Returns:
+        BaseChatModel: Configured chat model instance.
+    """
+    if chat_model is None:
+        settings = get_settings()
+        chat_model = settings.chat_model
+    return load_chat_model(fully_specified_name=chat_model, temperature=0.7, max_retries=2)
 
 
 def _prepend_system_prompt(messages: List) -> List:
@@ -65,38 +74,52 @@ def _extract_retrieved_context(messages: List) -> str:
 # Graph Nodes (async)
 # ============================================================================
 
-async def query_or_respond(state: MessagesState):
+async def query_or_respond(state: MessagesState, config: Optional[dict] = None):
     """Call LLM with retrieval tool to decide if documents are needed.
     
     Args:
         state: MessagesState with user question
+        config: Optional LangGraph config dict containing configurable parameters
         
     Returns:
         dict: Updated state with AI response (includes tool_calls if retrieval needed)
     """
-    llm_with_tools = _get_llm().bind_tools([retrieve_context])
+    # Extract chat_model from config if provided
+    chat_model = None
+    if config and "configurable" in config:
+        chat_model = config["configurable"].get("chat_model")
+    
+    llm = _get_llm(chat_model)
+    llm_with_tools = llm.bind_tools([retrieve_context])
     response = await llm_with_tools.ainvoke(
         _prepend_system_prompt(state["messages"])
     )
     return {"messages": [response]}
 
 
-async def generate(state: MessagesState):
+async def generate(state: MessagesState, config: Optional[dict] = None):
     """Generate answer based on retrieved documents.
     
     Args:
         state: MessagesState with conversation history and retrieved documents
+        config: Optional LangGraph config dict containing configurable parameters
         
     Returns:
         dict: Updated state with final answer
     """
+    # Extract chat_model from config if provided
+    chat_model = None
+    if config and "configurable" in config:
+        chat_model = config["configurable"].get("chat_model")
+    
     question = _extract_user_question(state["messages"])
     documents = _extract_retrieved_context(state["messages"])
     prompt = prompts.GENERATE_ANSWER_PROMPT.format(
         question=question or "No question provided.",
         documents=documents or "No supporting documents were retrieved.",
     )
-    response = await _get_llm().ainvoke([HumanMessage(content=prompt)])
+    llm = _get_llm(chat_model)
+    response = await llm.ainvoke([HumanMessage(content=prompt)])
     return {"messages": [response]}
 
 

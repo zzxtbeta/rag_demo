@@ -12,10 +12,10 @@ from agent import prompts
 class Context:
     """Runtime context for the Agentic RAG system."""
 
-    model: Annotated[str, {"__template_metadata__": {"kind": "llm"}}] = field(
+    chat_model: Annotated[str, {"__template_metadata__": {"kind": "llm"}}] = field(
         default="qwen-plus-latest",
         metadata={
-            "description": "The name of the language model to use. "
+            "description": "The name of the chat model to use. "
             "Default is DashScope Qwen Plus."
         },
     )

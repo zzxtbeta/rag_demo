@@ -13,7 +13,7 @@ def load_chat_model(
 ) -> BaseChatModel:
     """Load a chat model configured via Settings."""
     settings = get_settings()
-    model_name = fully_specified_name or settings.model_name
+    model_name = fully_specified_name or settings.chat_model
     
     return ChatOpenAI(
         model=model_name,

@@ -13,6 +13,8 @@ function App() {
     sendMessage,
     switchThread,
     createThread,
+    chatModel,
+    setChatModel,
   } = useChatStream("zzxt");
 
   const [sidebarVisible, setSidebarVisible] = useState(true);
@@ -38,6 +40,8 @@ function App() {
           messages={messages}
           onNewThread={createThread}
           onToggleSidebar={toggleSidebar}
+          chatModel={chatModel}
+          onChatModelChange={setChatModel}
         />
         <MessageInput onSend={sendMessage} disabled={false} />
         {isStreaming && <div className="stream-indicator">Streaming...</div>}

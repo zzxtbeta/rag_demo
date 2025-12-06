@@ -5,6 +5,7 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
 const STORAGE_KEY_THREADS = "chat_threads";
 const STORAGE_KEY_ACTIVE_THREAD = "chat_active_thread";
+const STORAGE_KEY_CHAT_MODEL = "chat_model";
 
 interface UseChatStreamResult {
   activeThreadId: string | null;
@@ -14,6 +15,8 @@ interface UseChatStreamResult {
   sendMessage: (content: string) => Promise<void>;
   switchThread: (threadId: string) => Promise<void>;
   createThread: () => void;
+  chatModel: string;
+  setChatModel: (model: string) => void;
 }
 
 // 从 localStorage 加载 threads
@@ -70,6 +73,10 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
   );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [chatModel, setChatModelState] = useState<string>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_CHAT_MODEL);
+    return saved || "qwen-plus-latest";
+  });
 
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -268,6 +275,11 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
     [],
   );
 
+  const setChatModel = useCallback((model: string) => {
+    setChatModelState(model);
+    localStorage.setItem(STORAGE_KEY_CHAT_MODEL, model);
+  }, []);
+
   const sendMessage = useCallback(
     async (content: string) => {
       const threadId = await ensureThread();
@@ -298,10 +310,11 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
           thread_id: threadId,
           user_id: userId,
           message: content,
+          chat_model: chatModel,
         }),
       });
     },
-    [ensureThread, attachWebSocket, userId],
+    [ensureThread, attachWebSocket, userId, chatModel],
   );
 
   useEffect(() => {
@@ -322,6 +335,8 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
     sendMessage,
     switchThread,
     createThread,
+    chatModel,
+    setChatModel,
   };
 }
 

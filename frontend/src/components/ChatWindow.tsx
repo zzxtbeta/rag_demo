@@ -4,7 +4,18 @@ import type { ChatMessage, NodeStep } from "../types";
 import TurnView from "./TurnView";
 import blackholeIcon from "../../icon/黑洞.png";
 
-const SettingsMenu: FC = () => {
+const AVAILABLE_MODELS = [
+  { value: "qwen-plus-latest", label: "Qwen Plus" },
+  { value: "qwen-max-latest", label: "Qwen Max" },
+  { value: "qwen-flash", label: "Qwen Flash" },
+] as const;
+
+interface SettingsMenuProps {
+  chatModel: string;
+  onChatModelChange: (model: string) => void;
+}
+
+const SettingsMenu: FC<SettingsMenuProps> = ({ chatModel, onChatModelChange }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     const saved = localStorage.getItem("theme");
@@ -18,7 +29,10 @@ const SettingsMenu: FC = () => {
 
   const toggleTheme = () => {
     setTheme((prev) => (prev === "dark" ? "light" : "dark"));
-    setIsOpen(false);
+  };
+
+  const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    onChatModelChange(e.target.value);
   };
 
   return (
@@ -36,9 +50,42 @@ const SettingsMenu: FC = () => {
       </button>
       {isOpen && (
         <div className="settings-dropdown">
-          <button onClick={toggleTheme} className="settings-menu-item">
-            {theme === "dark" ? "切换到浅色模式" : "切换到暗黑模式"}
-          </button>
+          <div className="settings-section">
+            <div className="settings-section-title">外观</div>
+            <div className="settings-item">
+              <label className="settings-label">主题模式</label>
+              <div className="settings-control">
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={theme === "light"}
+                    onChange={toggleTheme}
+                  />
+                  <span className="toggle-slider"></span>
+                </label>
+                <span className="settings-value">{theme === "dark" ? "暗黑模式" : "浅色模式"}</span>
+              </div>
+            </div>
+          </div>
+          <div className="settings-section">
+            <div className="settings-section-title">模型设置</div>
+            <div className="settings-item">
+              <label className="settings-label">Chat Model</label>
+              <div className="settings-control">
+                <select
+                  className="settings-select"
+                  value={chatModel}
+                  onChange={handleModelChange}
+                >
+                  {AVAILABLE_MODELS.map((model) => (
+                    <option key={model.value} value={model.value}>
+                      {model.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -49,9 +96,11 @@ interface ChatWindowProps {
   messages: ChatMessage[];
   onNewThread?: () => void;
   onToggleSidebar?: () => void;
+  chatModel: string;
+  onChatModelChange: (model: string) => void;
 }
 
-const ChatWindow: FC<ChatWindowProps> = ({ messages, onNewThread, onToggleSidebar }) => {
+const ChatWindow: FC<ChatWindowProps> = ({ messages, onNewThread, onToggleSidebar, chatModel, onChatModelChange }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -151,10 +200,10 @@ const ChatWindow: FC<ChatWindowProps> = ({ messages, onNewThread, onToggleSideba
           {/* 留空 */}
         </div>
         <div className="chat-header-actions">
-          <SettingsMenu />
+          <SettingsMenu chatModel={chatModel} onChatModelChange={onChatModelChange} />
           <button className="chat-new-thread-btn" onClick={onNewThread}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2L14.5 8.5L21 11L14.5 13.5L12 20L9.5 13.5L3 11L9.5 8.5L12 2Z" />
             </svg>
             New Chat
           </button>

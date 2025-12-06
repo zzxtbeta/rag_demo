@@ -100,14 +100,30 @@
 - ✅ `TurnView`：对话轮次视图（用户消息 + 节点时间轴 + AI 回复）
 - ✅ `NodeTimeline`：纵向时间轴展示节点执行过程
 - ✅ `NodeStep`：单个节点步骤（可展开/折叠查看 JSON）
-- ✅ `Sidebar`：线程列表、搜索、分组（TODAY/OLDER）、用户信息
-- ✅ `SettingsMenu`：主题切换菜单
+- ✅ `Sidebar`：线程列表、搜索、分组（TODAY/OLDER）、用户信息、线程管理（删除、复制 ID）
+- ✅ `SettingsMenu`：主题切换菜单、聊天模型选择器
 - ✅ `MessageInput`：优化的输入框（无 Send 按钮，Enter 发送）
+- ✅ `MessageActions`：AI 回复操作按钮（复制、点赞、点踩）
+- ✅ `CopyToast`：复制成功提示（1秒后自动消失）
 
 ### Backend Integration
-- ✅ `/chat/stream`：启动工作流并返回 `thread_id`
+- ✅ `/chat/stream`：启动工作流并返回 `thread_id`，支持动态模型选择
 - ✅ `/ws/{thread_id}`：WebSocket 实时接收流式消息
 - ✅ `/chat/threads/{thread_id}/history`：获取历史消息
+- ✅ `/chat/threads/{thread_id}` (DELETE)：删除线程的所有 checkpoint 数据
 - ✅ 错误处理：区分 `CancelledError`、`TimeoutError` 和一般异常
+
+### Advanced Features
+- ✅ **主题切换**：深色/浅色模式，使用 `data-theme` 属性和 localStorage 持久化
+- ✅ **模型选择**：支持动态切换聊天模型（qwen-plus-latest, qwen-max-latest, qwen-flash）
+- ✅ **线程管理**：
+  - 删除线程（三个点菜单 + 确认对话框）
+  - 复制 thread ID 到剪贴板（带 toast 提示）
+  - 动态标题生成（从第一条用户消息提取）
+- ✅ **消息操作**：AI 回复支持复制、点赞、点踩功能
+- ✅ **UI 优化**：
+  - 用户消息右对齐，时间戳显示在头像旁边
+  - New Chat 按钮黑色背景、四角星图标
+  - 复制成功 toast 提示（1秒后自动消失）
 
 

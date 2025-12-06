@@ -22,5 +22,21 @@
 
 ## 6. 验证与历史能力
 - [x] 6.1 编写单元测试验证节点→Redis→WebSocket 的实时链路。
-- [ ] 6.2 演示如何使用 `graph.get_state_history` 基于 thread_id 查询历史，确保多次执行/恢复场景正常工作。
+- [x] 6.2 实现 `/chat/threads/{thread_id}/history` API，基于 thread_id 查询历史消息。
+- [x] 6.3 实现 `/chat/threads/{thread_id}` (DELETE) API，删除线程的所有 checkpoint 数据。
+
+## 7. 流式输出优化
+- [x] 7.1 修复流式输出顺序问题，使用 `stream_mode=["updates", "messages"]` 混合模式
+- [x] 7.2 确保节点状态更新（updates）和 token 流式输出（messages）正确分离处理
+- [x] 7.3 修复前端消息显示顺序，确保节点步骤在 AI 回复之前显示
+
+## 8. 动态模型选择
+- [x] 8.1 后端支持通过 `chat_model` 参数动态选择模型
+- [x] 8.2 统一模型命名（`CHAT_MODEL`），移除 `MODEL_NAME` 和 `AGENT_MODEL` 重复
+- [x] 8.3 前端添加模型选择器，支持切换不同模型（qwen-plus-latest, qwen-max-latest, qwen-flash）
+
+## 9. 工具使用优化
+- [x] 9.1 优化系统提示词，明确要求使用 `retrieve_context` 工具
+- [x] 9.2 更新工具描述，明确使用场景和调用时机
+- [x] 9.3 在系统提示中列出所有可用工具
 

@@ -54,5 +54,27 @@
 - 代码范围：`api/routes/chat.py`（流式执行）、新增 `api/routes/stream.py`（WebSocket）、`infra/redis.py`（pub/sub 工具）、配置/脚本/文档。
 - 新依赖：`redis[asyncio]`（或 `redis` 4.x 带 asyncio 支持）。
 - 部署：需要 Redis 可达性与适当的 channel 命名策略；DB 默认使用 2（避免与 db0/db1 冲突）。
-- 行为变化：`/chat` 将返回 `thread_id`，前端基于该标识订阅频道，实现节点级实时显示；同时保留 LangGraph 原生状态恢复能力。
+- 行为变化：`/chat/stream` 将返回 `thread_id`，前端基于该标识订阅频道，实现节点级实时显示；同时保留 LangGraph 原生状态恢复能力。
+
+## Implementation Status
+
+### Streaming Mode
+- ✅ 使用混合流式模式：`stream_mode=["updates", "messages"]`
+- ✅ `updates` 模式：节点状态更新（开始/完成）
+- ✅ `messages` 模式：LLM token 级流式输出
+- ✅ 前端正确区分处理两种模式的消息
+
+### Thread Management
+- ✅ 实现删除线程 API：`DELETE /chat/threads/{thread_id}`
+- ✅ 正确删除所有相关表：`checkpoints`, `checkpoint_writes`, `checkpoint_blobs`
+- ✅ 前端集成删除功能，支持确认对话框
+
+### Model Selection
+- ✅ 后端支持动态模型选择（通过 `chat_model` 参数）
+- ✅ 统一模型配置（`CHAT_MODEL` 环境变量）
+- ✅ 前端模型选择器，支持实时切换
+
+### Tool Usage
+- ✅ 优化系统提示词，明确工具使用规则
+- ✅ 更新工具描述，提高工具调用准确性
 

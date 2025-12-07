@@ -178,7 +178,7 @@ def build_graph(
         compile_kwargs["checkpointer"] = checkpointer
 
     compiled = workflow.compile(**compile_kwargs)
-    compiled.name = "SimpleRAG"
+    compiled.name = "Gravaity_Agent"
     return compiled
 
 

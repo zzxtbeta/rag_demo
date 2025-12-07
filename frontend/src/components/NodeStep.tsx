@@ -12,10 +12,6 @@ const NodeStep: FC<NodeStepProps> = ({ step, isLast }) => {
 
   const getStatusIcon = () => {
     switch (step.status) {
-      case "start":
-        return "▶";
-      case "running":
-        return "⏳";
       case "completed":
         return "✓";
       case "error":
@@ -27,10 +23,6 @@ const NodeStep: FC<NodeStepProps> = ({ step, isLast }) => {
 
   const getStatusColor = () => {
     switch (step.status) {
-      case "start":
-        return "#3b82f6";
-      case "running":
-        return "#f59e0b";
       case "completed":
         return "#10b981";
       case "error":
@@ -82,6 +74,36 @@ const NodeStep: FC<NodeStepProps> = ({ step, isLast }) => {
         </div>
         {isExpanded && step.data && (
           <div className="node-step-details">
+            {/* 关键信息摘要 */}
+            {(step.data.token_usage || step.data.summary || step.data.execution_time_ms) && (
+              <div className="node-step-summary">
+                {step.data.execution_time_ms && (
+                  <div className="summary-item">
+                    <strong>Execution Time:</strong> {step.data.execution_time_ms.toFixed(1)}ms
+                  </div>
+                )}
+                {step.data.token_usage && (
+                  <div className="summary-item">
+                    <strong>Tokens:</strong>{" "}
+                    {step.data.token_usage.total_tokens > 0 ? (
+                      <>
+                        {step.data.token_usage.total_tokens} total 
+                        ({step.data.token_usage.prompt_tokens} prompt + {step.data.token_usage.completion_tokens} completion)
+                      </>
+                    ) : (
+                      <span style={{ color: "#9ca3af" }}>Not recorded</span>
+                    )}
+                  </div>
+                )}
+                {step.data.summary?.model && (
+                  <div className="summary-item">
+                    <strong>Model:</strong> {step.data.summary.model}
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* 完整 JSON 数据 */}
             <pre className="node-step-json">
               {JSON.stringify(step.data, null, 2)}
             </pre>

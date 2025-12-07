@@ -68,6 +68,10 @@ class Settings:
     retriever_top_k: int
     redis_url: Optional[str]
     workflow_timeout_seconds: int
+    # LangSmith 配置
+    langsmith_api_key: Optional[str]
+    langsmith_endpoint: str
+    langsmith_project: str
 
     @property
     def psycopg_connection(self) -> str:
@@ -99,6 +103,10 @@ def get_settings() -> Settings:
         retriever_top_k=_coerce_int("RETRIEVER_TOP_K", 4),
         redis_url=os.getenv("REDIS_URL"),
         workflow_timeout_seconds=_coerce_int("WORKFLOW_TIMEOUT_SECONDS", 300),
+        # LangSmith 配置
+        langsmith_api_key=os.getenv("LANGCHAIN_API_KEY"),
+        langsmith_endpoint=os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com"),
+        langsmith_project=os.getenv("LANGSMITH_PROJECT", "default"),
     )
 
 

@@ -36,4 +36,10 @@ export interface ThreadSummary {
   lastUpdated: number;
 }
 
+export interface TraceStats {
+  rootRunId: string | null;
+  totalLatencyMs: number | null;
+  totalTokens: number | null;
+}
+
 

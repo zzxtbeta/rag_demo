@@ -100,7 +100,13 @@ interface ChatWindowProps {
   onChatModelChange: (model: string) => void;
 }
 
-const ChatWindow: FC<ChatWindowProps> = ({ messages, onNewThread, onToggleSidebar, chatModel, onChatModelChange }) => {
+const ChatWindow: FC<ChatWindowProps> = ({ 
+  messages, 
+  onNewThread, 
+  onToggleSidebar, 
+  chatModel, 
+  onChatModelChange,
+}) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -115,34 +121,42 @@ const ChatWindow: FC<ChatWindowProps> = ({ messages, onNewThread, onToggleSideba
       assistantMessage: ChatMessage | null;
     }> = [];
 
-    let currentTurn: {
-      userMessage: ChatMessage | null;
-      nodeSteps: NodeStep[];
-      assistantMessage: ChatMessage | null;
-    } = {
-      userMessage: null,
-      nodeSteps: [],
-      assistantMessage: null,
-    };
-
-    for (const msg of messages) {
-      if (msg.role === "user") {
-        // 如果已有 turn，先保存
-        if (currentTurn.userMessage) {
-          turns.push({
-            userMessage: currentTurn.userMessage,
-            nodeSteps: currentTurn.nodeSteps,
-            assistantMessage: currentTurn.assistantMessage,
-          });
+    // 简化 Turn 组织逻辑：
+    // 1. 用户消息作为 Turn 起点
+    // 2. 节点消息根据时间戳分配到对应的 Turn
+    // 3. 助手消息匹配对应的 Turn
+    
+    const userMessages = messages.filter(m => m.role === 'user');
+    const nodeMessages = messages.filter(m => m.role === 'node');
+    const assistantMessages = messages.filter(m => m.role === 'assistant');
+    
+    for (let i = 0; i < userMessages.length; i++) {
+      const userMsg = userMessages[i];
+      const nextUserMsg = userMessages[i + 1];
+      
+      // 根据时间戳找到属于这个 Turn 的节点消息
+      const turnNodeMessages = nodeMessages.filter(msg => {
+        if (nextUserMsg) {
+          // 在当前用户消息和下一个用户消息之间的节点
+          return msg.timestamp >= userMsg.timestamp && msg.timestamp < nextUserMsg.timestamp;
+        } else {
+          // 最后一个 Turn，包含当前用户消息之后的所有节点
+          return msg.timestamp >= userMsg.timestamp;
         }
-        // 开始新 turn
-        currentTurn = {
-          userMessage: msg,
-          nodeSteps: [],
-          assistantMessage: null,
-        };
-      } else if (msg.role === "node") {
-        // 添加到当前 turn 的节点步骤
+      });
+      
+      const nodeSteps: NodeStep[] = [];
+      
+      for (const msg of turnNodeMessages) {
+        let parsedData = null;
+        try {
+          if (msg.content.trim().startsWith("{")) {
+            parsedData = JSON.parse(msg.content);
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+
         const step: NodeStep = {
           id: msg.id,
           nodeName: msg.nodeName || "unknown",
@@ -158,28 +172,20 @@ const ChatWindow: FC<ChatWindowProps> = ({ messages, onNewThread, onToggleSideba
               : "completed",
           messageType: (msg.messageType as any) || "output",
           timestamp: msg.timestamp,
-          data: msg.content.trim().startsWith("{") ? JSON.parse(msg.content) : null,
+          data: parsedData,
         };
-        currentTurn.nodeSteps.push(step);
-      } else if (msg.role === "assistant") {
-        // 更新当前 turn 的 assistant 消息
-        if (currentTurn.assistantMessage) {
-          // 如果已存在，更新内容（token 流式更新）
-          currentTurn.assistantMessage.content = msg.content;
-          currentTurn.assistantMessage.timestamp = msg.timestamp;
-        } else {
-          // 否则创建新的
-          currentTurn.assistantMessage = msg;
-        }
+        
+        nodeSteps.push(step);
       }
-    }
-
-    // 保存最后一个 turn
-    if (currentTurn.userMessage) {
+      
+      // 找到对应的 assistant 消息（同样按索引匹配）
+      const assistantMessage = assistantMessages[i] || null;
+      
+      // 保存这个 turn
       turns.push({
-        userMessage: currentTurn.userMessage,
-        nodeSteps: currentTurn.nodeSteps,
-        assistantMessage: currentTurn.assistantMessage,
+        userMessage: userMsg,
+        nodeSteps: nodeSteps,
+        assistantMessage: assistantMessage,
       });
     }
 

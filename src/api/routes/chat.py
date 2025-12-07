@@ -17,11 +17,14 @@ from api.schemas import (
     StreamStartResponse,
     HistoryMessage,
     ThreadHistory,
+    TraceRun,
+    ThreadHistoryWithTrace,
 )
 from api.utils import extract_content
 from langchain_core.messages import AIMessage, BaseMessage
 from config.settings import get_settings
 from infra.redis_pubsub import RedisPublisher, StreamMessage
+from utils.langsmith_client import get_langsmith_client
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +36,58 @@ except Exception:  # pragma: no cover - defensive
 
 
 router = APIRouter()
+
+
+def build_trace_tree(trace_runs: list[TraceRun]) -> list[dict[str, Any]]:
+    """构建 trace 执行树。
+    
+    Args:
+        trace_runs: TraceRun 对象列表
+        
+    Returns:
+        树形结构的 trace runs（只包含根节点，子节点在 children 字段中）
+    """
+    if not trace_runs:
+        return []
+    
+    # 将 Pydantic 对象转换为字典
+    runs_dict = [r.model_dump() for r in trace_runs]
+    
+    # 建立索引
+    run_map = {r["run_id"]: r for r in runs_dict}
+    children_map = {r["run_id"]: [] for r in runs_dict}
+    
+    # 找到根节点和子节点关系
+    roots = []
+    for r in runs_dict:
+        parent_id = r.get("parent_run_id")
+        if parent_id and parent_id in children_map:
+            children_map[parent_id].append(r)
+        else:
+            roots.append(r)
+    
+    # DFS 构建树节点
+    def build_node(run: dict[str, Any]) -> dict[str, Any]:
+        children = children_map.get(run["run_id"], [])
+        node = {
+            "run_id": run["run_id"],
+            "name": run["name"],
+            "run_type": run["run_type"],
+            "start_time": run["start_time"],
+            "end_time": run.get("end_time"),
+            "latency_ms": run.get("latency_ms"),
+            "total_tokens": run.get("total_tokens"),
+            "prompt_tokens": run.get("prompt_tokens"),
+            "completion_tokens": run.get("completion_tokens"),
+            "error": run.get("error"),
+            "inputs": run.get("inputs"),
+            "outputs": run.get("outputs"),
+            "parent_run_id": run.get("parent_run_id"),
+            "children": [build_node(c) for c in children]
+        }
+        return node
+    
+    return [build_node(r) for r in roots]
 
 
 def _normalize_update(obj: Any) -> Any:
@@ -117,14 +172,12 @@ async def _stream_workflow_to_redis(
 ) -> None:
     """后台执行工作流并将节点更新发布到 Redis。
 
-    ✅ 流程：
-    1. 发布工作流开始事件（workflow:start）
-    2. 使用 stream_mode=["updates", "messages"] 混合模式流式执行 graph.astream
-    3. 处理两种类型的流式输出：
-       - "updates" 模式：发布节点状态更新（节点开始/完成事件）
-       - "messages" 模式：发布 token 级别的流式消息（message_chunk, metadata）
-    4. 工作流完成后发布 workflow:complete（包含所有节点时间统计）
-    5. 发生错误时发布 workflow:error（区分超时、取消、执行错误）
+    ✅ 简化流程：
+    1. 使用 stream_mode=["updates", "messages", "custom"] 混合模式
+    2. 只发布关键事件（completed、token、custom）
+    3. 移除 start 事件，保持界面整洁
+    4. 工作流完成后发布 workflow:complete
+    5. 错误时发布 workflow:error
 
     参数：
     - graph: LangGraph 工作流实例
@@ -134,46 +187,30 @@ async def _stream_workflow_to_redis(
     - publisher: Redis 发布器实例
 
     事件发布：
-    - workflow:{thread_id}:workflow:start - 工作流开始
-    - workflow:{thread_id}:{node_name}:token - token 级别的流式消息
-    - workflow:{thread_id}:{node_name}:start - 节点开始（推断）
+    - workflow:{thread_id}:{node_name}:token - LLM token 流式输出
     - workflow:{thread_id}:{node_name}:output - 节点完成
+    - workflow:{thread_id}:custom:custom - 自定义状态更新
     - workflow:{thread_id}:workflow:complete - 工作流完成
     - workflow:{thread_id}:workflow:error - 工作流错误
 
     注意：
-    - 混合模式返回 (mode, chunk) 元组，需要根据 mode 区分处理
-    - messages 模式的 chunk 是 (message_chunk, metadata) 元组
-    - updates 模式的 chunk 是 {node_name: update} 字典
-    - 节点开始事件是通过追踪 last_node 推断的，不是真正的开始时间
-    - 执行时间记录的是节点间时间间隔，不是精确的节点执行时间
+    - 混合模式返回 (mode, chunk) 元组
+    - messages 模式：LLM token 流式输出
+    - updates 模式：节点完成事件（无 start 事件）
+    - custom 模式：自定义进度提示（从节点内部发送）
     - 超时时间由 WORKFLOW_TIMEOUT_SECONDS 配置（默认 300 秒）
-    - CancelledError 不会发布错误事件（用户主动取消）
     """
     start_time = time.perf_counter()
     node_times: dict[str, float] = {}
-    last_node: str | None = None
-    node_start_time = start_time
 
     settings = get_settings()
     timeout_seconds = settings.workflow_timeout_seconds
-
-    await publisher.publish_message(
-        StreamMessage(
-            thread_id=thread_id,
-            node_name="workflow",
-            message_type="start",
-            status="started",
-            timestamp=time.time(),
-            data={"input": payload},
-        )
-    )
 
     async def _process_stream():
         async for stream_mode, chunk in graph.astream(
             payload,
             config,
-            stream_mode=["updates", "messages"],
+            stream_mode=["updates", "messages", "custom"],
         ):
             if stream_mode == "messages":
                 # messages 模式：chunk 是 (message_chunk, metadata) 元组
@@ -213,28 +250,13 @@ async def _stream_workflow_to_redis(
                         )
                 
             elif stream_mode == "updates":
-                # updates 模式：chunk 是 {node_name: update} 字典
+                # updates 模式：节点完成事件（移除 start 事件）
                 for node_name, update in chunk.items():
-                    nonlocal last_node, node_start_time
-                    if node_name != last_node and last_node is not None:
-                        elapsed_ms = (time.perf_counter() - node_start_time) * 1000
-                        node_times[last_node] = elapsed_ms
-
-                    if node_name != last_node:
-                        await publisher.publish_node_output(
-                            thread_id=thread_id,
-                            node_name=node_name,
-                            data={"status": "starting"},
-                            status="starting",
-                            message_type="start",
-                        )
-                        node_start_time = time.perf_counter()
-
-                    normalized = _normalize_update(update)
-                    elapsed_ms = (time.perf_counter() - node_start_time) * 1000
+                    elapsed_ms = (time.perf_counter() - start_time) * 1000
                     node_times[node_name] = elapsed_ms
 
-                    # 发布节点完成事件
+                    normalized = _normalize_update(update)
+                    # 只发布节点完成事件
                     await publisher.publish_node_output(
                         thread_id=thread_id,
                         node_name=node_name,
@@ -243,8 +265,19 @@ async def _stream_workflow_to_redis(
                         message_type="output",
                         execution_time_ms=elapsed_ms,
                     )
-                    last_node = node_name
-                    node_start_time = time.perf_counter()
+            
+            elif stream_mode == "custom":
+                # custom 模式：自定义状态更新（从节点内部发送）
+                await publisher.publish_message(
+                    StreamMessage(
+                        thread_id=thread_id,
+                        node_name="custom",
+                        message_type="custom",
+                        status="info",
+                        timestamp=time.time(),
+                        data=chunk,
+                    )
+                )
 
     try:
         await asyncio.wait_for(_process_stream(), timeout=timeout_seconds)
@@ -346,12 +379,18 @@ async def get_thread_history(
     thread_id: str,
     graph=Depends(get_graph),
 ):
-    """获取线程的完整历史记录。
+    """获取线程的完整对话历史（轻量级,不含 Trace）。
+
+    ✅ 用途：
+    - 前端默认使用此接口加载历史对话
+    - 只返回用户和助手的消息,不包含工具调用和系统消息
+    - 性能优化,不查询 LangSmith Trace API
+    - 适用于对话恢复、历史浏览等场景
 
     ✅ 流程：
-    1. 从 graph 获取 checkpointer
-    2. 使用 graph.aget_state 获取当前状态
-    3. 从状态中提取 messages 数组
+    1. 从 LangGraph Checkpoint 获取当前状态
+    2. 提取 messages 数组并过滤出 user/assistant 消息
+    3. 保留数据库中的原始时间戳(秒转毫秒)
     4. 转换为 HistoryMessage 格式返回
 
     参数：
@@ -361,9 +400,9 @@ async def get_thread_history(
     - ThreadHistory: 包含 thread_id、messages 列表、total_messages
 
     注意：
-    - 如果线程不存在，返回 404 错误
-    - 如果 graph 没有配置 checkpointer，返回 400 错误
-    - messages 按时间顺序排列（从旧到新）
+    - 如果线程不存在,返回 404 错误
+    - messages 按时间顺序排列(从旧到新)
+    - 不包含 LangSmith Trace 信息,如需 Trace 请使用 history-with-trace 接口
     """
     try:
         config = {"configurable": {"thread_id": thread_id}}
@@ -381,26 +420,32 @@ async def get_thread_history(
 
         # 转换为 HistoryMessage 对象
         history_messages: list[HistoryMessage] = []
-        for msg in messages:
+        for i, msg in enumerate(messages):
             # 判断消息类型
-            if hasattr(msg, "type"):
-                if msg.type == "human":
-                    role = "user"
-                elif msg.type == "ai":
-                    role = "assistant"
-                elif msg.type == "system":
-                    role = "system"
-                else:
-                    # 跳过其他类型的消息（如 tool）
-                    continue
-            else:
-                # 默认作为 assistant 消息
+            msg_type = getattr(msg, "type", "unknown")
+            role = "assistant"  # default
+            
+            if msg_type == "human":
+                role = "user"
+            elif msg_type == "ai":
                 role = "assistant"
+            elif msg_type == "system":
+                role = "system"
+            elif msg_type == "tool":
+                role = "tool"
+            else:
+                # Skip unknown types if necessary, or treat as assistant
+                pass
 
             # 提取内容
             content = getattr(msg, "content", "")
-            if not content:
-                continue
+            # Allow empty content for tool calls (AI message calling tool)
+            
+            # 提取 ID
+            msg_id = getattr(msg, "id", None)
+            if not msg_id:
+                # Generate a stable ID based on index if missing
+                msg_id = f"{thread_id}_{i}"
 
             # 提取时间戳（如果有）
             timestamp = None
@@ -410,12 +455,24 @@ async def get_thread_history(
                 metadata = getattr(msg, "response_metadata", {})
                 if isinstance(metadata, dict) and "timestamp" in metadata:
                     timestamp = metadata["timestamp"]
+            
+            # Extract extra fields
+            name = getattr(msg, "name", None)
+            tool_calls = getattr(msg, "tool_calls", [])
+            tool_call_id = getattr(msg, "tool_call_id", None)
+            artifact = getattr(msg, "artifact", None)
 
             history_messages.append(
                 HistoryMessage(
+                    id=str(msg_id),
                     role=role,
                     content=str(content),
                     timestamp=timestamp,
+                    type=msg_type,
+                    name=name,
+                    tool_calls=tool_calls,
+                    tool_call_id=tool_call_id,
+                    artifact=artifact,
                 )
             )
 
@@ -429,6 +486,203 @@ async def get_thread_history(
         raise
     except Exception as exc:
         logger.exception(f"Error fetching thread history: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch thread history: {str(exc)}",
+        ) from exc
+
+
+@router.get("/threads/{thread_id}/history-with-trace", response_model=ThreadHistoryWithTrace)
+async def get_thread_history_with_trace(thread_id: str, graph=Depends(get_graph)):
+    """获取线程的完整历史记录（含 LangSmith Trace 统计）。
+
+    ✅ 用途：
+    - 用于调试、性能分析、Token 统计等场景
+    - 返回完整的 LangSmith Trace 树,包含所有节点执行信息
+    - 提供根节点统计(总延迟、总 Token 消耗等)
+    - 前端可选择性使用此接口获取详细执行信息
+
+    ✅ 流程：
+    1. 从 LangGraph Checkpoint 获取基本消息历史
+    2. 从 LangSmith API 查询该 thread 的所有 Trace Runs
+    3. 构建 Trace 树形结构(父子关系)
+    4. 递归统计所有节点的 Token 消耗
+    5. 合并返回完整数据(消息 + Trace 树 + 统计信息)
+
+    参数：
+    - thread_id: 会话线程标识
+
+    返回：
+    - ThreadHistoryWithTrace: 包含消息、trace_runs、trace_tree、统计信息
+
+    注意：
+    - 如果未配置 LangSmith,trace_runs 将为空数组
+    - trace_runs 按 start_time 正序排列(从早到晚)
+    - 查询 LangSmith API 有网络开销,建议按需使用
+    - 前端默认不使用此接口,避免性能影响
+    """
+    try:
+        config = {"configurable": {"thread_id": thread_id}}
+
+        # 1. 获取基本消息历史
+        state = await graph.aget_state(config)
+        if not state:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Thread not found: {thread_id}",
+            )
+
+        messages = state.values.get("messages", [])
+
+        # 转换为 HistoryMessage
+        history_messages: list[HistoryMessage] = []
+        for i, msg in enumerate(messages):
+            msg_type = getattr(msg, "type", "unknown")
+            role = "assistant"
+            
+            if msg_type == "human":
+                role = "user"
+            elif msg_type == "ai":
+                role = "assistant"
+            elif msg_type == "system":
+                role = "system"
+            elif msg_type == "tool":
+                role = "tool"
+
+            content = getattr(msg, "content", "")
+            msg_id = getattr(msg, "id", None) or f"{thread_id}_{i}"
+            
+            timestamp = None
+            if hasattr(msg, "timestamp"):
+                timestamp = msg.timestamp
+            elif hasattr(msg, "response_metadata"):
+                metadata = getattr(msg, "response_metadata", {})
+                if isinstance(metadata, dict) and "timestamp" in metadata:
+                    timestamp = metadata["timestamp"]
+            
+            name = getattr(msg, "name", None)
+            tool_calls = getattr(msg, "tool_calls", [])
+            tool_call_id = getattr(msg, "tool_call_id", None)
+            artifact = getattr(msg, "artifact", None)
+
+            history_messages.append(
+                HistoryMessage(
+                    id=str(msg_id),
+                    role=role,
+                    content=str(content),
+                    timestamp=timestamp,
+                    type=msg_type,
+                    name=name,
+                    tool_calls=tool_calls,
+                    tool_call_id=tool_call_id,
+                    artifact=artifact,
+                )
+            )
+
+        # 2. 从 LangSmith 获取 Trace Runs
+        trace_runs: list[TraceRun] = []
+        langsmith_client = get_langsmith_client()
+        
+        if langsmith_client:
+            try:
+                settings = get_settings()
+                # 使用 LangSmith 官方推荐的 filter 语法查询 thread_id
+                filter_string = (
+                    f'and(in(metadata_key, ["session_id","conversation_id","thread_id"]), '
+                    f'eq(metadata_value, "{thread_id}"))'
+                )
+                
+                runs = []
+                for run in langsmith_client.list_runs(
+                    project_name=settings.langsmith_project,
+                    filter=filter_string,
+                ):
+                    runs.append(run)
+                
+                # 按 start_time 正序排序（早到晚）
+                runs.sort(key=lambda r: r.start_time if r.start_time else 0)
+                
+                # 转换为 TraceRun
+                for run in runs:
+                    latency_ms = None
+                    if run.end_time and run.start_time:
+                        latency_ms = (run.end_time - run.start_time).total_seconds() * 1000
+                    
+                    trace_run = TraceRun(
+                        run_id=str(run.id),
+                        name=run.name,
+                        run_type=run.run_type,
+                        start_time=run.start_time.isoformat() if run.start_time else "",
+                        end_time=run.end_time.isoformat() if run.end_time else None,
+                        latency_ms=latency_ms,
+                        total_tokens=run.total_tokens,
+                        prompt_tokens=run.prompt_tokens,
+                        completion_tokens=run.completion_tokens,
+                        error=run.error,
+                        inputs=run.inputs,
+                        outputs=run.outputs,
+                        parent_run_id=str(run.parent_run_id) if run.parent_run_id else None,
+                    )
+                    trace_runs.append(trace_run)
+                
+                logger.info(f"Fetched {len(trace_runs)} trace runs from LangSmith for thread {thread_id}")
+            except Exception as exc:
+                logger.warning(f"Failed to fetch LangSmith traces: {exc}")
+                # 不中断请求，继续返回消息历史
+        
+        # 构建 trace 树
+        trace_tree = build_trace_tree(trace_runs)
+        
+        # 提取根节点信息（用于前端显示统计数据）
+        root_run_id = None
+        total_latency_ms = None
+        total_tokens = None
+        
+        if trace_tree and len(trace_tree) > 0:
+            root_run = trace_tree[0]
+            root_run_id = root_run.get("run_id")
+            total_latency_ms = root_run.get("latency_ms")
+            
+            # 汇总所有 token（递归统计所有子节点）
+            def sum_tokens(node: dict) -> int:
+                # 获取当前节点的 token
+                tokens = 0
+                if node.get("total_tokens"):
+                    tokens = node["total_tokens"]
+                elif node.get("prompt_tokens") or node.get("completion_tokens"):
+                    # 如果没有 total_tokens，手动计算
+                    tokens = (node.get("prompt_tokens") or 0) + (node.get("completion_tokens") or 0)
+                
+                # 递归累加所有子节点的 token
+                for child in node.get("children", []):
+                    tokens += sum_tokens(child)
+                
+                return tokens
+            
+            total_tokens = sum_tokens(root_run)
+            
+            logger.info(
+                f"📊 Thread {thread_id} stats: "
+                f"root_run_id={root_run_id}, "
+                f"latency={total_latency_ms}ms, "
+                f"tokens={total_tokens}"
+            )
+        
+        return ThreadHistoryWithTrace(
+            thread_id=thread_id,
+            messages=history_messages,
+            total_messages=len(history_messages),
+            trace_runs=trace_runs,
+            trace_tree=trace_tree,
+            root_run_id=root_run_id,
+            total_latency_ms=total_latency_ms,
+            total_tokens=total_tokens,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception(f"Error fetching thread history with trace: {exc}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch thread history: {str(exc)}",

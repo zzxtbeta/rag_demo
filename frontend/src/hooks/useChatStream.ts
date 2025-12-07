@@ -7,6 +7,11 @@ const STORAGE_KEY_THREADS = "chat_threads";
 const STORAGE_KEY_ACTIVE_THREAD = "chat_active_thread";
 const STORAGE_KEY_CHAT_MODEL = "chat_model";
 
+// 生成消息存储的 key
+function getMessagesStorageKey(threadId: string): string {
+  return `chat_messages_${threadId}`;
+}
+
 interface UseChatStreamResult {
   activeThreadId: string | null;
   threads: ThreadSummary[];
@@ -19,6 +24,7 @@ interface UseChatStreamResult {
   updateThreadTitle: (threadId: string, title: string) => void;
   chatModel: string;
   setChatModel: (model: string) => void;
+  traceStats: TraceStats | null;
 }
 
 // 从 localStorage 加载 threads
@@ -66,6 +72,30 @@ function saveActiveThreadToStorage(threadId: string | null): void {
   }
 }
 
+// 从 localStorage 加载消息
+function loadMessagesFromStorage(threadId: string): ChatMessage[] {
+  try {
+    const key = getMessagesStorageKey(threadId);
+    const stored = localStorage.getItem(key);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error("Failed to load messages from storage:", error);
+  }
+  return [];
+}
+
+// 保存消息到 localStorage
+function saveMessagesToStorage(threadId: string, messages: ChatMessage[]): void {
+  try {
+    const key = getMessagesStorageKey(threadId);
+    localStorage.setItem(key, JSON.stringify(messages));
+  } catch (error) {
+    console.error("Failed to save messages to storage:", error);
+  }
+}
+
 export function useChatStream(userId: string = "demo-user"): UseChatStreamResult {
   const [activeThreadId, setActiveThreadId] = useState<string | null>(() => 
     loadActiveThreadFromStorage()
@@ -91,6 +121,15 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
   useEffect(() => {
     saveActiveThreadToStorage(activeThreadId);
   }, [activeThreadId]);
+
+  // 注意：不再自动保存节点消息到 LocalStorage
+  // 因为节点消息现在完全由后端 API（LangSmith Trace）重构
+  // 只在流式执行时临时保存，刷新时会从后端重新加载
+  // useEffect(() => {
+  //   if (activeThreadId && messages.length > 0) {
+  //     saveMessagesToStorage(activeThreadId, messages);
+  //   }
+  // }, [messages, activeThreadId]);
 
   // 初始化时，如果有 activeThreadId，加载历史记录
   useEffect(() => {
@@ -127,11 +166,19 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
   }, []);
 
   const loadThreadHistory = useCallback(async (threadId: string) => {
+    // 添加 Loading 占位消息
+    setMessages([{
+      id: 'loading',
+      threadId,
+      role: 'system',
+      content: '正在加载历史记录...',
+      timestamp: Date.now(),
+    }]);
+    
     try {
-      const response = await fetch(`${API_BASE}/chat/threads/${encodeURIComponent(threadId)}/history`);
+      const response = await fetch(`${API_BASE}/chat/threads/${encodeURIComponent(threadId)}/history-with-trace`);
       if (!response.ok) {
         if (response.status === 404) {
-          // 线程不存在，清空消息
           setMessages([]);
           return;
         }
@@ -139,19 +186,43 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
       }
       const data = await response.json();
       
-      // 将历史消息转换为 ChatMessage 格式
-      const historyMessages: ChatMessage[] = data.messages.map((msg: any, index: number) => ({
-        id: `${threadId}_history_${index}`,
-        threadId: threadId,
-        role: msg.role,
-        content: msg.content,
-        timestamp: msg.timestamp || Date.now() - (data.messages.length - index) * 1000,
-      }));
+      // 简化历史消息重构：只加载用户和助手消息
+      // 实时节点执行过程不会持久化，刷新后不显示
+      const reconstructedMessages: ChatMessage[] = [];
       
-      setMessages(historyMessages);
+      // 直接加载用户和助手消息（使用数据库中的时间戳）
+      data.messages.forEach((msg: any, index: number) => {
+        const baseId = msg.id || `${threadId}_history_${index}`;
+        
+        // 使用数据库中保存的时间戳（秒 → 毫秒）
+        const timestamp = msg.timestamp ? msg.timestamp * 1000 : Date.now() - (data.messages.length - index) * 1000;
 
-      // 如果标题还是 "New Chat"，从第一条用户消息提取标题
-      const firstUserMessage = historyMessages.find((msg) => msg.role === "user");
+        if (msg.role === 'user') {
+          reconstructedMessages.push({
+            id: baseId,
+            threadId,
+            role: 'user',
+            content: msg.content,
+            timestamp
+          });
+        } else if (msg.role === 'assistant') {
+          reconstructedMessages.push({
+            id: baseId,
+            threadId,
+            role: 'assistant',
+            content: msg.content,
+            timestamp
+          });
+        }
+        // 忽略其他类型的消息（如 tool、system）
+      });
+      
+      // 按时间戳排序确保正确的执行顺序
+      reconstructedMessages.sort((a, b) => a.timestamp - b.timestamp);
+      setMessages(reconstructedMessages);
+
+      // 更新标题（如果需要）
+      const firstUserMessage = reconstructedMessages.find((msg) => msg.role === "user");
       if (firstUserMessage) {
         setThreads((prev) => {
           const thread = prev.find((t) => t.id === threadId);
@@ -168,7 +239,6 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
       }
     } catch (error) {
       console.error("Failed to load thread history:", error);
-      // 如果加载失败，至少清空当前消息
       setMessages([]);
     }
   }, [generateTitleFromMessage]);
@@ -177,6 +247,8 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
     async (threadId: string) => {
       setActiveThreadId(threadId);
       setMessages([]); // 先清空，避免显示旧消息
+      // 清除 LocalStorage 中的旧数据（确保从后端重新加载）
+      localStorage.removeItem(getMessagesStorageKey(threadId));
       // 加载该线程的历史记录
       await loadThreadHistory(threadId);
     },
@@ -224,7 +296,60 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
             if (token) {
               setMessages((prev) => {
                 const lastMsg = prev[prev.length - 1];
-                // 流式追加 token：如果最后一条是 assistant 消息，追加 token
+                
+                // ✅ 关键修复:判断是否需要创建新的 assistant 消息
+                // 如果当前节点是 generate(最终答案),需要:
+                // 1. 移除当前轮次中 query_or_respond 创建的临时 assistant 消息
+                // 2. 创建新的 assistant 消息用于显示最终答案
+                if (nodeName === "generate") {
+                  // 找到最后一个 user 消息的索引
+                  let lastUserIdx = -1;
+                  for (let i = prev.length - 1; i >= 0; i--) {
+                    if (prev[i].role === "user") {
+                      lastUserIdx = i;
+                      break;
+                    }
+                  }
+                  
+                  // 只移除最后一个 user 消息之后的、没有 nodeName 的 assistant 消息
+                  const filteredMessages = prev.filter((msg, idx) => {
+                    // 保留所有非 assistant 消息
+                    if (msg.role !== "assistant") return true;
+                    // 保留最后一个 user 消息之前的所有消息
+                    if (idx <= lastUserIdx) return true;
+                    // 保留已经有 nodeName='generate' 的 assistant 消息
+                    if (msg.nodeName === "generate") return true;
+                    // 移除当前轮次中没有 nodeName 的 assistant 消息(来自 query_or_respond)
+                    return false;
+                  });
+                  
+                  // 检查最后一条消息是否是当前 generate 节点的 assistant 消息
+                  const lastFiltered = filteredMessages[filteredMessages.length - 1];
+                  if (lastFiltered?.role === "assistant" && lastFiltered.nodeName === "generate") {
+                    // 追加 token 到现有的 generate 消息
+                    return filteredMessages.map((msg, idx) =>
+                      idx === filteredMessages.length - 1
+                        ? { ...msg, content: msg.content + token }
+                        : msg,
+                    );
+                  } else {
+                    // 创建新的 generate 消息
+                    return [
+                      ...filteredMessages,
+                      {
+                        id: `${Date.now()}_ai_${Math.random().toString(36).slice(2)}`,
+                        threadId: threadIdFromData,
+                        role: "assistant" as const,
+                        content: token,
+                        timestamp: Date.now(),
+                        nodeName: "generate",
+                      },
+                    ];
+                  }
+                }
+                
+                // 非 generate 节点:正常处理 token 累积
+                // 流式追加 token：如果最后一条是 assistant 消息,追加 token
                 if (lastMsg?.role === "assistant") {
                   return prev.map((msg, idx) =>
                     idx === prev.length - 1
@@ -264,66 +389,19 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
             return;
           }
 
-          // 处理节点输出（output/start）：只显示节点信息
-          // 对于 tools 节点，只保留 start 和 output，避免重复的 running 状态
-          if (nodeName && nodeName !== "workflow" && messageType !== "token") {
-            // 对于 tools 节点，如果是 output 类型，检查是否已有该节点的 start 消息
-            // 这样可以避免显示多个 running 状态
-            if (nodeName === "tools" && messageType === "output") {
-              setMessages((prev) => {
-                // 检查是否已有该节点的 start 消息
-                const hasStart = prev.some(
-                  (msg) => msg.nodeName === nodeName && msg.messageType === "start"
-                );
-                if (!hasStart) {
-                  // 如果没有 start，先添加 start 消息
-                  const startMsg: ChatMessage = {
-                    id: `${Date.now()}_node_start_${Math.random().toString(36).slice(2)}`,
-                    threadId: threadIdFromData,
-                    role: "node",
-                    content: JSON.stringify({ status: "starting" }, null, 2),
-                    nodeName: nodeName,
-                    messageType: "start",
-                    timestamp: Date.now(),
-                  };
-                  const outputMsg: ChatMessage = {
-                    id: `${Date.now()}_node_${Math.random().toString(36).slice(2)}`,
-                    threadId: threadIdFromData,
-                    role: "node",
-                    content: JSON.stringify(rawData, null, 2),
-                    nodeName: nodeName,
-                    messageType: messageType,
-                    timestamp: Date.now(),
-                  };
-                  return [...prev, startMsg, outputMsg];
-                } else {
-                  // 已有 start，只添加 output
-                  const outputMsg: ChatMessage = {
-                    id: `${Date.now()}_node_${Math.random().toString(36).slice(2)}`,
-                    threadId: threadIdFromData,
-                    role: "node",
-                    content: JSON.stringify(rawData, null, 2),
-                    nodeName: nodeName,
-                    messageType: messageType,
-                    timestamp: Date.now(),
-                  };
-                  return [...prev, outputMsg];
-                }
-              });
-            } else {
-              // 其他节点正常处理
-              const nodeContent = JSON.stringify(rawData, null, 2);
-              const nodeMsg: ChatMessage = {
-                id: `${Date.now()}_node_${Math.random().toString(36).slice(2)}`,
-                threadId: threadIdFromData,
-                role: "node",
-                content: nodeContent,
-                nodeName: nodeName,
-                messageType: messageType,
-                timestamp: Date.now(),
-              };
-              setMessages((prev) => [...prev, nodeMsg]);
-            }
+          // 处理节点完成事件（只显示 output）
+          // 忽略 start 事件和 workflow 节点
+          if (nodeName && nodeName !== "workflow" && messageType === "output") {
+            const nodeMsg: ChatMessage = {
+              id: `${Date.now()}_node_${Math.random().toString(36).slice(2)}`,
+              threadId: threadIdFromData,
+              role: "node",
+              content: JSON.stringify(rawData, null, 2),
+              nodeName: nodeName,
+              messageType: "output",
+              timestamp: Date.now(),
+            };
+            setMessages((prev) => [...prev, nodeMsg]);
           }
 
           // 更新线程时间戳
@@ -380,6 +458,14 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
           throw new Error(`Failed to delete thread: ${response.statusText}`);
         }
 
+        // 删除 localStorage 中的消息
+        try {
+          const key = getMessagesStorageKey(threadId);
+          localStorage.removeItem(key);
+        } catch (error) {
+          console.error("Failed to remove messages from storage:", error);
+        }
+
         // 从本地状态中移除
         setThreads((prev) => {
           const updated = prev.filter((t) => t.id !== threadId);
@@ -411,6 +497,11 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
   const sendMessage = useCallback(
     async (content: string) => {
       const threadId = await ensureThread();
+      
+      // 清理之前实时流遗留的节点消息（保留用户和助手消息）
+      // 这样可以避免新的流式消息与旧的节点消息混淆
+      setMessages((prev) => prev.filter(msg => msg.role !== 'node'));
+      
       const userMessage: ChatMessage = {
         id: `${Date.now()}_user`,
         threadId,

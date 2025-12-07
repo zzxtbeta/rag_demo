@@ -116,6 +116,15 @@ def load_and_split_pdfs(
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
+        separators=[
+            "\n#", # 一级标题
+            "\n##", # 二级标题
+            "\n###", # 三级标题
+            "\n\n",  # 段落
+            "\n",   # 行
+            " ",   # 词
+            "",    # 字符
+        ],
         add_start_index=True,
     )
     

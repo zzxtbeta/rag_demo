@@ -1,4 +1,8 @@
-"""Vector store utilities for RAG system."""
+"""Vector store utilities for RAG system.
+
+Primary workflow: Use MinerU processor (utils.mineru_processor) for document processing.
+Legacy functions below support PyPDFLoader for backward compatibility.
+"""
 
 from functools import lru_cache
 from pathlib import Path
@@ -83,6 +87,8 @@ def load_and_split_pdfs(
 ) -> list[Document]:
     """Load PDF files from directory and split into chunks.
     
+    DEPRECATED: Use MinerU processor instead (utils.mineru_processor.MineruProcessor).
+    
     Args:
         pdf_dir: Directory containing PDF files.
         chunk_size: Maximum size of each chunk in characters.
@@ -140,6 +146,8 @@ def index_documents(
     chunk_overlap: Optional[int] = None,
 ) -> PGVector:
     """Load PDFs, split them, and index into vector store.
+    
+    DEPRECATED: Use MinerU processor instead (utils.mineru_processor.MineruProcessor).
     
     Args:
         pdf_dir: Directory containing PDF files.

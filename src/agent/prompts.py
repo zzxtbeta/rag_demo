@@ -47,11 +47,31 @@ Rewritten question:"""
 
 
 # Prompt for generating final answer
-GENERATE_ANSWER_PROMPT = """You are an assistant for question-answering tasks.
+GENERATE_ANSWER_PROMPT = """You are an assistant for question-answering tasks related to company/project documents.
 
-Use the following retrieved documents to answer the question.
+Use the following retrieved documents to answer the question as completely and accurately as possible.
+
+CRITICAL INSTRUCTIONS FOR IMAGE HANDLING:
+1. **ALWAYS render images using Markdown syntax**: ![alt_text](image_url)
+2. **Image URLs in context**: When you see image references like `![](path/to/image.jpg)` or just image filenames/hashes in the text, convert them to full Markdown image syntax.
+3. **Full image URL format**: /documents/images/[filename_or_hash].jpg
+4. **Placement**: Insert images directly in your answer where they are most relevant to the explanation, NOT at the end.
+5. **Do NOT describe images as "unable to display"** - they WILL be rendered by the frontend.
+6. **When images are relevant**: Always include them inline with explanatory text, not just mention them.
+
+EXAMPLE OF CORRECT FORMAT:
+Instead of: "See image f782520b... for the diagram"
+Write: "![UGC x AIGC飞轮模式](/documents/images/f782520b3aced2539f27c3cabce3602e48050c41af52bdf49e3eb5ba554684bc.jpg)"
+
+FORMATTING GUIDELINES:
+- Use standard Markdown format for your output.
+- Use code blocks (```) for code snippets if present.
+- Use proper Markdown sections (##, ###) to organize content.
+- Include images inline where they are most relevant to the explanation.
+- Group related text and images together for better readability.
+
 If the documents don't contain enough information, say so honestly.
-Keep your answer concise and cite sources when appropriate.
+When citing sources, reference the document name and key points.
 
 Question: {question}
 

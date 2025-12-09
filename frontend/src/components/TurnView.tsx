@@ -1,5 +1,7 @@
 import type { FC } from "react";
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import NodeTimeline from "./NodeTimeline";
 import type { ChatMessage, NodeStep } from "../types";
 
@@ -83,10 +85,42 @@ const TurnView: FC<TurnViewProps> = ({
               <span className="message-role">Assistant</span>
               <span className="message-time">{formatTime(assistantMessage.timestamp)}</span>
             </div>
-            <div className="message-bubble message-bubble-assistant">
-              {assistantMessage.content.split("\n").map((line, idx) => (
-                <div key={idx}>{line}</div>
-              ))}
+            <div className="message-bubble message-bubble-assistant markdown-content">
+              <ReactMarkdown 
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  img: (props: any) => (
+                    <img 
+                      {...props} 
+                      style={{
+                        maxWidth: "100%",
+                        height: "auto",
+                        borderRadius: "8px",
+                        marginTop: "12px",
+                        marginBottom: "12px"
+                      }}
+                    />
+                  ),
+                  p: (props: any) => <p {...props} style={{margin: "8px 0"}} />,
+                  h1: (props: any) => <h1 {...props} style={{marginTop: "16px", marginBottom: "8px"}} />,
+                  h2: (props: any) => <h2 {...props} style={{marginTop: "12px", marginBottom: "6px"}} />,
+                  h3: (props: any) => <h3 {...props} style={{marginTop: "10px", marginBottom: "4px"}} />,
+                  ul: (props: any) => <ul {...props} style={{marginLeft: "20px", margin: "8px 0"}} />,
+                  ol: (props: any) => <ol {...props} style={{marginLeft: "20px", margin: "8px 0"}} />,
+                  code: (props: any) => 
+                    props.inline ? (
+                      <code {...props} style={{backgroundColor: "rgba(0,0,0,0.1)", padding: "2px 6px", borderRadius: "3px"}} />
+                    ) : (
+                      <code {...props} style={{display: "block", backgroundColor: "rgba(0,0,0,0.1)", padding: "12px", borderRadius: "6px", overflow: "auto"}} />
+                    ),
+                  pre: (props: any) => <pre {...props} style={{margin: "8px 0"}} />,
+                  table: (props: any) => <table {...props} style={{borderCollapse: "collapse", width: "100%", margin: "8px 0"}} />,
+                  th: (props: any) => <th {...props} style={{border: "1px solid #ccc", padding: "8px", textAlign: "left"}} />,
+                  td: (props: any) => <td {...props} style={{border: "1px solid #ccc", padding: "8px"}} />,
+                }}
+              >
+                {assistantMessage.content}
+              </ReactMarkdown>
             </div>
             <div className="message-actions-row">
               {/* 左侧：操作按钮 */}

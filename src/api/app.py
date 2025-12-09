@@ -21,6 +21,7 @@ from db.checkpointer import CheckpointerManager
 from db.database import DatabaseManager
 from api.routes.chat import router as chat_router
 from api.routes.stream import router as stream_router
+from api.routes.documents import router as documents_router
 
 
 @asynccontextmanager
@@ -54,6 +55,7 @@ def create_app() -> FastAPI:
 
     app.include_router(chat_router, prefix="/chat", tags=["chat"])
     app.include_router(stream_router, tags=["stream"])
+    app.include_router(documents_router, prefix="/documents", tags=["documents"])
     return app
 
 

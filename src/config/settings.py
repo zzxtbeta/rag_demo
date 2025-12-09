@@ -72,6 +72,9 @@ class Settings:
     langsmith_api_key: Optional[str]
     langsmith_endpoint: str
     langsmith_project: str
+    # Document processing 配置
+    frontend_images_dir: str
+    frontend_image_prefix: str
 
     @property
     def psycopg_connection(self) -> str:
@@ -107,6 +110,9 @@ def get_settings() -> Settings:
         langsmith_api_key=os.getenv("LANGCHAIN_API_KEY"),
         langsmith_endpoint=os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com"),
         langsmith_project=os.getenv("LANGSMITH_PROJECT", "default"),
+        # Document processing 配置
+        frontend_images_dir=os.getenv("FRONTEND_IMAGES_DIR", "./frontend/public/documents/images"),
+        frontend_image_prefix=os.getenv("FRONTEND_IMAGE_PREFIX", "/documents/images"),
     )
 
 

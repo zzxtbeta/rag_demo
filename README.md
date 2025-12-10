@@ -1,21 +1,14 @@
-# LangGraph Agentic RAG
+# GravAIty - 智能文档问答系统
 
 基于 **LangGraph v1** 和 **PGVector** 的智能文档问答系统，实现异步、可持久化的检索增强生成（RAG）Agent。
 
-当前实现的是一个 **简化版 Agentic RAG**：LLM 自主判断是否需要检索文档，使用工具从 PGVector 检索上下文，并基于检索结果生成答案；同时通过 LangGraph 的 **Postgres checkpointer** 支持基于 `thread_id` 的短期记忆（对话线程）。
-
-参考文档：
-- [LangGraph Agentic RAG 教程](https://docs.langchain.com/oss/python/langgraph/agentic-rag)
-- [LangChain RAG 指南](https://docs.langchain.com/oss/python/langchain/rag)
-- [LangGraph 持久化与记忆](https://docs.langchain.com/oss/python/langgraph/add-memory)
-
-## 功能特性
-
-- 🧠 **智能决策**：LLM 通过工具调用决定是否需要检索文档
-- 🔍 **语义检索**：PGVector + OpenAI `text-embedding-3-large`
-- 💬 **DashScope Qwen**：使用阿里云通义千问作为推理模型（经 OpenAI 兼容接口）
-- 💾 **短期记忆**：基于 `thread_id` 的对话线程，通过 Postgres checkpointer 持久化
-- 🧱 **模块化结构**：`agent`（图与状态）、`tools`（工具）、`utils`（通用函数）、`config`（配置）、`db`（持久化）
+**核心特性**：
+- 🧠 **Agentic RAG**：LLM 自主决策是否需要检索文档
+- 🖼️ **多模态支持**：通过 MinerU 解析 PDF，支持文本 + 图片显示
+- 🔍 **语义检索**：PGVector + OpenAI embeddings
+- 💬 **推理模型**：DashScope Qwen（OpenAI 兼容接口）
+- 💾 **对话记忆**：基于 `thread_id` 的线程隔离
+- 🎨 **现代化前端**：React + Markdown 渲染，支持图片、表格、代码块
 
 ## 架构设计（当前简化版）
 
@@ -31,197 +24,210 @@ query_or_respond (LLM 决策，是否调用检索工具)
 
 后续可以按 [官方 Agentic RAG 教程](https://docs.langchain.com/oss/python/langgraph/agentic-rag) 扩展 `grade_documents` / `rewrite_question` 等节点。
 
-## 项目结构（简化）
+## 项目结构
 
 ```text
-rag_demo/
-├── data/                      # PDF 文档存放目录
-├── scripts/
-│   ├── __init__.py
-│   └── init_vectorstore.py    # 文档索引脚本
-├── src/
-│   ├── agent/
-│   │   ├── __init__.py
-│   │   ├── context.py         # Runtime 上下文（预留）
-│   │   ├── graph.py           # LangGraph 图定义（异步节点 + checkpointer）
-│   │   ├── state.py           # 状态管理（MessagesState 扩展）
-│   │   └── vectorstore.py     # PGVector 封装（索引/检索）
-│   ├── tools/
-│   │   ├── __init__.py
-│   │   └── retrieval.py       # 检索工具（给 LLM 调用）
-│   ├── utils/
-│   │   ├── __init__.py
-│   │   └── llm.py             # 模型加载（DashScope Qwen，经 ChatOpenAI）
-│   ├── config/
-│   │   ├── __init__.py
-│   │   └── settings.py        # 全局配置（环境变量集中管理）
-│   ├── db/
-│   │   ├── __init__.py
-│   │   ├── database.py        # PostgreSQL 连接池（psycopg_pool）
-│   │   ├── checkpointer.py    # LangGraph PostgresSaver 封装（短期记忆）
-│   │   └── memory_store.py    # LangGraph AsyncPostgresStore 封装（长期记忆，预留）
-│   └── api/                   # 预留给 FastAPI / LangGraph Agent Server 集成
-├── .env.example               # 环境变量示例
-├── pyproject.toml             # 项目依赖配置
-└── README.md                  # 项目文档
+gravaity/
+├── backend/
+│   ├── src/
+│   │   ├── agent/              # LangGraph 工作流
+│   │   │   ├── graph.py        # 主工作流定义
+│   │   │   ├── state.py        # 状态管理
+│   │   │   ├── prompts.py      # LLM 提示词
+│   │   │   └── vectorstore.py  # 向量存储操作
+│   │   ├── api/                # FastAPI 接口
+│   │   │   ├── app.py          # 应用入口
+│   │   │   └── routes/
+│   │   │       ├── chat.py     # 聊天接口
+│   │   │       └── documents.py # 文档处理接口
+│   │   ├── tools/              # LLM 工具
+│   │   │   └── retrieval.py    # 检索工具
+│   │   ├── utils/              # 工具函数
+│   │   │   ├── llm.py          # 模型加载
+│   │   │   └── mineru_processor.py  # MinerU 文档处理
+│   │   ├── config/             # 配置管理
+│   │   │   └── settings.py     # 环境变量加载
+│   │   └── db/                 # 数据库
+│   │       ├── database.py     # 连接池
+│   │       └── checkpointer.py # 对话持久化
+│   ├── .env.example            # 环境变量示例
+│   ├── pyproject.toml          # Python 依赖
+│   └── start_backend.py        # 启动脚本
+│
+├── frontend/                   # React 前端
+│   ├── src/
+│   │   ├── components/         # React 组件
+│   │   ├── hooks/              # 自定义 hooks
+│   │   ├── styles.css          # 样式表
+│   │   └── main.tsx            # 入口
+│   ├── package.json            # Node 依赖
+│   └── vite.config.ts          # Vite 配置
+│
+├── data/                       # MinerU 解析结果存放
+├── docs/                       # 文档
+│   └── DOCUMENT_PROCESSING.md  # 文档处理指南
+└── openspec/                   # 变更提案
 ```
 
 ## 快速开始
 
-### 1. 安装依赖
+### 0. 前置要求
+
+- Python 3.10+
+- Node.js 18+
+- PostgreSQL 14+ (with pgvector extension)
+- API Keys: OpenAI (embeddings), DashScope (Qwen)
+
+### 1. 后端安装与配置
+
+#### 1.1 安装 Python 依赖
 
 ```bash
+# 进入项目根目录
+cd gravaity
+
+# 安装后端依赖
 pip install -e .
 ```
 
-主要依赖：
-- `langgraph`：LangGraph 框架（v1）
-- `langgraph-checkpoint` / `langgraph-checkpoint-postgres`：Postgres checkpointer
-- `langchain-openai`：OpenAI 兼容接口
-- `langchain-postgres`：PostgreSQL 向量存储
-- `langchain-community`：文档加载器等工具
-- `langchain-text-splitters`：文档分块
-- `pypdf`：PDF 解析
-- `psycopg[binary]`：PostgreSQL 驱动
-
-### 2. 配置环境变量
-
-复制 `.env.example` 到 `.env` 并填写必要的配置：
+#### 1.2 配置环境变量
 
 ```bash
 cp .env.example .env
 ```
 
-关键配置（与 `config/settings.py` 对应）：
+编辑 `.env` 填写必要配置：
 
 ```env
-# Embeddings 专用 Key
-OPENAI_EMBEDDINGS_API_KEY=your-embeddings-key
+# OpenAI Embeddings (用于向量化文档)
+OPENAI_EMBEDDINGS_API_KEY=sk-...
 
-# DashScope（Qwen）模型配置（经 OpenAI 兼容协议调用）
-MODEL_NAME=qwen-plus-latest
-DASHSCOPE_API_KEY=your-dashscope-key
-DASHSCOPE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+# DashScope Qwen (推理模型)
+DASHSCOPE_API_KEY=sk-...
+CHAT_MODEL=qwen-plus-latest
 
-# PostgreSQL 连接字符串（需启用 pgvector）
-POSTGRES_CONNECTION_STRING=postgresql://username:password@localhost:5432/dbname
+# PostgreSQL (需启用 pgvector)
+POSTGRES_CONNECTION_STRING=postgresql://user:password@localhost:5432/gravaity
 
-# 可选：自定义集合名与分块参数
+# 文档处理
+FRONTEND_IMAGES_DIR=./frontend/public/documents/images
+FRONTEND_IMAGE_PREFIX=/documents/images
 VECTOR_COLLECTION=pdf_documents
 CHUNK_SIZE=1000
 CHUNK_OVERLAP=200
-RETRIEVER_TOP_K=2
 ```
 
-> `config/settings.py` 会自动将 `POSTGRES_CONNECTION_STRING` 转换为 `postgresql+psycopg://` 形式供 PGVector 使用。
-
-### 3. 准备 PostgreSQL 与 pgvector
-
-确保 PostgreSQL 已启用 `pgvector` 扩展：
-
-```sql
-CREATE EXTENSION IF NOT EXISTS vector;
-```
-
-### 4. 准备 PDF 文档
+#### 1.3 初始化数据库
 
 ```bash
-mkdir -p data
-# 将你的 PDF 文件复制到 data/ 目录
-cp /path/to/your/documents/*.pdf data/
+# 确保 pgvector 已启用
+psql -U postgres -d gravaity -c "CREATE EXTENSION IF NOT EXISTS vector;"
 ```
 
-### 5. 索引文档到向量库
-
-使用脚本将 PDF 文档索引到 PGVector：
+#### 1.4 启动后端
 
 ```bash
-python -m scripts.init_vectorstore
+python ./start_backend.py
 ```
 
-可选参数：
+后端运行在 `http://0.0.0.0:8000`
 
-- `--pdf-dir`：PDF 文件目录（默认 `./data`）
-- `--collection-name`：集合名称（默认读取 `VECTOR_COLLECTION` 环境变量）
-- `--chunk-size`：文本块大小（默认 `CHUNK_SIZE`）
-- `--chunk-overlap`：块重叠大小（默认 `CHUNK_OVERLAP`）
+### 2. 前端安装与运行
 
-示例：
+#### 2.1 安装 Node 依赖
 
 ```bash
-python -m scripts.init_vectorstore \
-    --pdf-dir ./data \
-  --collection-name pdf_documents \
-    --chunk-size 1500 \
-    --chunk-overlap 300
+cd frontend
+npm install
 ```
 
-### 6. 运行异步 RAG Agent（本地调用）
-
-`src/agent/graph.py` 暴露了一个异步图实例 `graph`，并默认使用 Postgres checkpointer 支持基于 `thread_id` 的短期记忆：
-
-```python
-from agent.graph import graph
-
-config = {"configurable": {"thread_id": "user-123"}}
-
-result = await graph.ainvoke(
-    {"messages": [{"role": "user", "content": "这份文档里提到了哪些关键技术？"}]},
-    config,
-)
-
-print(result["messages"][-1].content)
-```
-
-如果需要流式输出：
-
-```python
-async for update in graph.astream(
-    {"messages": [{"role": "user", "content": "帮我总结一下文档的主要内容"}]},
-    config,
-    stream_mode="updates",
-):
-    # update 里会包含各节点的增量消息
-    ...
-```
-
-> 同一个 `thread_id` 会共享对话上下文，不同 `thread_id` 之间相互隔离。
-
-### 7. FastAPI 接口
-
-项目内置了一个 FastAPI 服务，可直接对接工作流：
+#### 2.2 启动开发服务器
 
 ```bash
-uvicorn api.app:app --reload
+npm run dev
 ```
 
-`POST /chat` 请求示例：
+前端运行在 `http://localhost:5173`
 
+### 3. 文档处理与向量嵌入
+
+#### 3.1 使用 MinerU 解析 PDF
+
+使用 MinerU 解析 PDF 文件（生成 Markdown + 图片）：
+
+```bash
+# MinerU 安装与使用详见: https://github.com/opendatalab/MinerU
+mineru --pdf /path/to/document.pdf --output-dir ./data/ocr/
+```
+
+输出结构：
+```
+data/ocr/document_name/
+├── auto/
+│   ├── document.md          # 解析后的 Markdown
+│   └── images/              # 提取的图片
+│       ├── xxx.jpg
+│       └── yyy.jpg
+```
+
+#### 3.2 通过 API 处理文档并嵌入向量
+
+```bash
+curl -X POST http://localhost:8000/documents/process-mineru \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_path": "./data/ocr/document_name",
+    "embed": true,
+    "collection_name": "pdf_documents"
+  }'
+```
+
+**参数说明**：
+- `source_path`: MinerU 输出目录的**父目录**（包含 `auto/` 子目录）
+- `embed`: 是否嵌入向量库（true/false）
+- `collection_name`: 向量集合名称
+
+**响应示例**：
 ```json
 {
-  "thread_id": "user-123",
-  "user_id": "alice",
-  "message": "帮我总结文档的关键结论"
+  "status": "success",
+  "message": "Document processed successfully",
+  "images_copied": 15,
+  "chunks_created": 23,
+  "collection_name": "pdf_documents"
 }
 ```
 
-响应：
+#### 3.3 验证嵌入结果
 
-```json
-{
-  "thread_id": "user-123",
-  "user_id": "alice",
-  "answer": "..."
-}
+在聊天界面提问，系统会自动检索相关文档并显示（包括图片）。
+
+### 4. 对话与检索
+
+#### 4.1 通过 Web UI 对话
+
+打开 `http://localhost:5173`，输入问题。系统会：
+1. 自动判断是否需要检索文档
+2. 从向量库检索相关内容
+3. 基于检索结果生成答案
+4. 支持 Markdown 渲染（包括图片、表格、代码块）
+
+#### 4.2 通过 API 对话
+
+```bash
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "thread_id": "user-123",
+    "message": "文档中提到了什么关键技术？"
+  }'
 ```
 
-FastAPI 在启动时会：
+#### 4.3 查看对话历史
 
-1. 初始化 PostgreSQL 连接池和 LangGraph Postgres checkpointer；
-2. 构建异步 `graph` 实例并缓存到 `app.state`；
-3. 每次调用 `/chat` 时，通过 `graph.ainvoke(...)` 与 LangGraph workflow 交互。
-
-当部署到 LangGraph Agent Server / Cloud 时，可通过 `langgraph dev` 或 `langgraph up` 直接加载 `graph`（此时 checkpointer 由平台管理）。
+```bash
+curl http://localhost:8000/chat/threads/user-123/history
+```
 
 ## 后续扩展方向
 
@@ -229,96 +235,52 @@ FastAPI 在启动时会：
 - **长期记忆（跨线程 Store）**：基于 `src/db/memory_store.py` 注入 `AsyncPostgresStore`，在节点中通过 `store: BaseStore` + `config: RunnableConfig` 做用户记忆的读写（参考官方 [Add Memory 文档](https://docs.langchain.com/oss/python/langgraph/add-memory)）
 - **API 层**：在 `src/api/` 中使用 FastAPI 封装对 `graph` 的 `ainvoke/astream` 调用
 
-## 许可证
+## 常见问题
 
-MIT License
+### Q: 如何处理 JSON 路径转义错误？
+
+在 curl 中使用正斜杠或双反斜杠：
+
+```bash
+# ✅ 推荐：使用正斜杠
+curl -X POST http://localhost:8000/documents/process-mineru \
+  -H "Content-Type: application/json" \
+  -d '{"source_path": "./data/ocr/document_name", "embed": true}'
+
+# ✅ 也可以：Windows 双反斜杠
+curl -X POST http://localhost:8000/documents/process-mineru \
+  -H "Content-Type: application/json" \
+  -d "{\"source_path\": \"D:\\\\code\\\\gravaity\\\\data\\\\ocr\\\\document_name\", \"embed\": true}"
+```
+
+### Q: 图片没有显示？
+
+检查以下几点：
+1. 确保 `FRONTEND_IMAGES_DIR` 指向正确的目录（`./frontend/public/documents/images`）
+2. 确保后端从项目根目录启动（使用 `python ./start_backend.py`）
+3. 检查前端是否已安装 `react-markdown` 依赖
+
+### Q: 向量嵌入失败？
+
+常见原因：
+1. OpenAI API Key 无效或配额不足
+2. 网络连接问题（特别是 tiktoken 下载）
+3. 文档过大导致 token 超限
+
+解决方案：
+```bash
+# 预先缓存 tiktoken 编码
+python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
+```
 
 ## 参考资源
 
 - [LangGraph 文档](https://langchain-ai.github.io/langgraph/)
 - [LangGraph Agentic RAG 教程](https://docs.langchain.com/oss/python/langgraph/agentic-rag)
-- [LangChain RAG 教程](https://docs.langchain.com/oss/python/langchain/rag)
+- [MinerU 项目](https://github.com/opendatalab/MinerU)
 - [PGVector 文档](https://github.com/pgvector/pgvector)
 - [OpenAI Embeddings](https://platform.openai.com/docs/guides/embeddings)
-
-## 使用示例
-
-### 基本对话
-
-```
-用户: 文档中提到了什么关键技术?
-Agent: [自动调用 retrieve_documents 工具检索相关内容]
-Agent: 根据文档,主要提到了以下技术...
-```
-
-### 个性化记忆
-
-```
-用户: 我对机器学习很感兴趣
-Agent: [自动存储用户偏好到 memory store]
-Agent: 明白了,我会记住您对机器学习的兴趣...
-```
-
-## 配置说明
-
-### LLM 模型配置
-
-默认使用 Anthropic Claude,可以在环境变量或代码中修改:
-
-- Anthropic: `anthropic/claude-sonnet-4-5-20250929`
-- OpenAI: `openai/gpt-4o`
-- 其他支持的模型...
-
-### 检索参数
-
-在 `vectorstore.py` 中调整检索数量:
-
-```python
-search_kwargs = {"k": 4}  # 返回的文档数量
-```
-
-### 分块策略
-
-在 `vectorstore.py` 中调整文档分块参数:
-
-```python
-chunk_size = 1000       # 每个块的最大字符数
-chunk_overlap = 200     # 块之间的重叠字符数
-```
 
 ## 许可证
 
 MIT License
-
-## 参考资源
-
-- [LangGraph 文档](https://langchain-ai.github.io/langgraph/)
-- [LangChain RAG 教程](https://python.langchain.com/docs/tutorials/rag/)
-- [PGVector 文档](https://github.com/pgvector/pgvector)
-- [OpenAI Embeddings](https://platform.openai.com/docs/guides/embeddings)
-
-Assuming the bot saved some memories, create a _new_ thread using the `+` icon. Then chat with the bot again - if you've completed your setup correctly, the bot should now have access to the memories you've saved!
-
-You can review the saved memories by clicking the "memory" button.
-
-![Memories Explorer](./static/memories.png)
-
-## How it works
-
-This chat bot reads from your memory graph's `Store` to easily list extracted memories. If it calls a tool, LangGraph will route to the `store_memory` node to save the information to the store.
-
-## How to evaluate
-
-Memory management can be challenging to get right, especially if you add additional tools for the bot to choose between.
-To tune the frequency and quality of memories your bot is saving, we recommend starting from an evaluation set, adding to it over time as you find and address common errors in your service.
-
-We have provided a few example evaluation cases in [the test file here](./tests/integration_tests/test_graph.py). As you can see, the metrics themselves don't have to be terribly complicated, especially not at the outset.
-
-We use [LangSmith's @unit decorator](https://docs.smith.langchain.com/how_to_guides/evaluation/unit_testing#write-a-test) to sync all the evaluations to LangSmith so you can better optimize your system and identify the root cause of any issues that may arise.
-
-## How to customize
-
-1. Customize memory content: we've defined a simple memory structure `content: str, context: str` for each memory, but you could structure them in other ways.
-2. Provide additional tools: the bot will be more useful if you connect it to other functions.
-3. Select a different model: We default to anthropic/claude-3-5-sonnet-20240620. You can select a compatible chat model using provider/model-name via configuration. Example: openai/gpt-4.
-4. Customize the prompts: We provide a default prompt in the [prompts.py](src/memory_agent/prompts.py) file. You can easily update this via configuration.

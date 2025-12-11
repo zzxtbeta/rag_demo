@@ -1,5 +1,11 @@
 export type Role = "user" | "assistant" | "system" | "node";
 
+export interface DocumentMetadata {
+  filename?: string
+  format?: string
+  markdown_content: string
+}
+
 export interface ChatMessage {
   id: string;
   threadId: string;
@@ -8,6 +14,7 @@ export interface ChatMessage {
   nodeName?: string;
   messageType?: string;
   timestamp: number;
+  documents?: DocumentMetadata[];
 }
 
 export interface NodeStep {

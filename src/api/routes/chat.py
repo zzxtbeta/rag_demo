@@ -121,47 +121,6 @@ def _normalize_update(obj: Any) -> Any:
     return obj
 
 
-@router.post("", response_model=ChatResponse)
-async def chat_endpoint(req: ChatRequest, graph=Depends(get_graph)):
-    """同步聊天接口，执行完整工作流后返回最终答案。
-
-    ✅ 流程：
-    1. 构建 LangGraph 配置（thread_id、user_id）
-    2. 调用 graph.ainvoke 同步执行整个工作流
-    3. 从结果中提取最后一条消息的 content
-    4. 返回包含 thread_id、user_id、answer 的响应
-
-    参数：
-    - req: 聊天请求，包含 thread_id、user_id、message
-    - graph: LangGraph 工作流实例（通过依赖注入）
-
-    返回：
-    - ChatResponse: 包含 thread_id、user_id、最终答案
-
-    注意：
-    - 此接口会等待整个工作流完成，适合不需要实时更新的场景
-    - 如需实时节点级更新，请使用 /chat/stream 接口
-    """
-    config = {"configurable": {"thread_id": req.thread_id}}
-    if req.user_id:
-        config["configurable"]["user_id"] = req.user_id
-    if req.chat_model:
-        config["configurable"]["chat_model"] = req.chat_model
-
-    payload = {"messages": [{"role": "user", "content": req.message}]}
-    result = await graph.ainvoke(payload, config)
-
-    messages = result.get("messages", [])
-    if not messages:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Model returned empty response",
-        )
-
-    answer = extract_content(messages[-1])
-    return ChatResponse(thread_id=req.thread_id, user_id=req.user_id, answer=answer)
-
-
 async def _stream_workflow_to_redis(
     *,
     graph,
@@ -353,8 +312,19 @@ async def chat_stream_endpoint(
     if req.chat_model:
         config["configurable"]["chat_model"] = req.chat_model
 
+    # Combine message with uploaded documents for LLM
+    message_content = req.message
+    if req.documents:
+        # Add document metadata markers for frontend extraction
+        doc_section = "\n\n<uploaded_documents>\n"
+        for idx, doc in enumerate(req.documents):
+            # Include metadata in markers for frontend to parse
+            doc_section += f'<document index="{idx}" filename="{doc.filename}" format="{doc.format}">\n{doc.markdown_content}\n</document>\n'
+        doc_section += "</uploaded_documents>"
+        message_content += doc_section
+
     payload: dict[str, Any] = {
-        "messages": [{"role": "user", "content": req.message}]
+        "messages": [{"role": "user", "content": message_content}]
     }
 
     background_tasks.add_task(
@@ -499,6 +469,7 @@ async def get_thread_history(
             name = getattr(msg, "name", None)
             tool_calls = getattr(msg, "tool_calls", [])
             tool_call_id = getattr(msg, "tool_call_id", None)
+            
             history_messages.append(
                 HistoryMessage(
                     id=str(msg_id),

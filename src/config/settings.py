@@ -130,7 +130,7 @@ def get_settings() -> Settings:
         project_search_api_url=os.getenv("PROJECT_SEARCH_API_URL"),
         project_search_api_username=os.getenv("PROJECT_SEARCH_API_USERNAME"),
         project_search_api_password=os.getenv("PROJECT_SEARCH_API_PASSWORD"),
-        project_search_enabled=os.getenv("PROJECT_SEARCH_ENABLED", "true").lower() == "true",
+        project_search_enabled=os.getenv("PROJECT_SEARCH_ENABLED", "false").lower() == "true",
         # Project search database 配置
         project_search_db_url=os.getenv("PROJECT_SEARCH_DB_URL"),
     )

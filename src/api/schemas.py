@@ -21,6 +21,20 @@ class Message(BaseModel):
     content: str
 
 
+class DocumentMetadata(BaseModel):
+    """文档元数据。
+    
+    字段：
+    - filename: 文件名
+    - format: 文件格式
+    - markdown_content: Markdown 转换后的内容
+    """
+    
+    filename: str
+    format: str
+    markdown_content: str
+
+
 class ChatRequest(BaseModel):
     """聊天请求载荷。
 
@@ -33,6 +47,8 @@ class ChatRequest(BaseModel):
     - message: 用户查询内容
 
     - chat_model: 聊天使用的模型名称（可选），如未指定则使用默认配置
+
+    - documents: 用户上传的文档元数据（可选），包含 filename、format、markdown_content
     """
 
     thread_id: str = Field(..., description="Conversation thread identifier")
@@ -42,6 +58,9 @@ class ChatRequest(BaseModel):
     message: str = Field(..., description="User query content")
     chat_model: Optional[str] = Field(
         None, description="Optional chat model name (e.g., 'qwen-plus-latest', 'qwen-max-latest', 'qwen-flash')"
+    )
+    documents: Optional[list[DocumentMetadata]] = Field(
+        None, description="Optional uploaded documents with metadata"
     )
 
 
@@ -94,6 +113,20 @@ class StreamStartResponse(BaseModel):
     status: str = "streaming"
 
 
+class DocumentMetadata(BaseModel):
+    """文档元数据。
+    
+    字段：
+    - filename: 文件名
+    - format: 文件格式
+    - markdown_content: Markdown 转换后的内容
+    """
+    
+    filename: str
+    format: str
+    markdown_content: str
+
+
 class HistoryMessage(BaseModel):
     """历史消息项。
 
@@ -106,6 +139,7 @@ class HistoryMessage(BaseModel):
     - name: 消息名称（如工具名称）
     - tool_calls: 工具调用列表（仅 AI 消息）
     - tool_call_id: 工具调用 ID（仅 Tool 消息）
+    - documents: 上传的文档元数据（仅用户消息）
     """
 
     id: str
@@ -117,6 +151,7 @@ class HistoryMessage(BaseModel):
     tool_calls: list[dict] = []
     tool_call_id: Optional[str] = None
     artifact: Optional[Any] = None
+    documents: Optional[list[DocumentMetadata]] = None
 
 
 class ThreadHistory(BaseModel):
@@ -197,6 +232,7 @@ __all__ = [
     "ChatResponse",
     "StreamStartResponse",
     "Message",
+    "DocumentMetadata",
     "HistoryMessage",
     "ThreadHistory",
     "TraceRun",

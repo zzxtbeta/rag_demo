@@ -21,6 +21,7 @@ const TurnView: FC<TurnViewProps> = ({
   const [liked, setLiked] = useState(false);
   const [disliked, setDisliked] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ src: string; alt: string } | null>(null);
+  const [selectedDocument, setSelectedDocument] = useState<{filename: string; format: string; markdown_content: string} | null>(null);
 
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp);
@@ -64,9 +65,77 @@ const TurnView: FC<TurnViewProps> = ({
             <span className="message-time">{formatTime(userMessage.timestamp)}</span>
           </div>
           <div className="message-bubble message-bubble-user">
-            {userMessage.content.split("\n").map((line, idx) => (
-              <div key={idx}>{line}</div>
-            ))}
+            {(() => {
+              // Extract user message content and documents
+              const content = userMessage.content
+              const docMarkerIndex = content.indexOf('<uploaded_documents>')
+              const userContent = docMarkerIndex >= 0 ? content.substring(0, docMarkerIndex).trim() : content
+              
+              // Extract document metadata from content if no documents field
+              const extractedDocs: Array<{filename: string; format: string; markdown_content: string}> = []
+              if ((!userMessage.documents || userMessage.documents.length === 0) && docMarkerIndex >= 0) {
+                const docSection = content.substring(docMarkerIndex)
+                const docRegex = /<document index="\d+" filename="([^"]*)" format="([^"]*)">[\s\S]*?<\/document>/g
+                const contentRegex = /<document[^>]*>([\s\S]*?)<\/document>/g
+                
+                let match
+                let contentMatch
+                const docMatches: Array<{filename: string; format: string}> = []
+                const contentMatches: string[] = []
+                
+                while ((match = docRegex.exec(docSection)) !== null) {
+                  docMatches.push({filename: match[1], format: match[2]})
+                }
+                
+                while ((contentMatch = contentRegex.exec(docSection)) !== null) {
+                  contentMatches.push(contentMatch[1].trim())
+                }
+                
+                // Combine metadata with content
+                docMatches.forEach((doc, idx) => {
+                  extractedDocs.push({
+                    filename: doc.filename,
+                    format: doc.format,
+                    markdown_content: contentMatches[idx] || ''
+                  })
+                })
+              }
+              
+              const docsToDisplay: Array<{filename: string; format: string; markdown_content: string}> = userMessage.documents && userMessage.documents.length > 0 
+                ? userMessage.documents.map(doc => ({
+                    filename: doc.filename || '',
+                    format: doc.format || '',
+                    markdown_content: doc.markdown_content || ''
+                  }))
+                : extractedDocs
+              
+              return (
+                <>
+                  {userContent.split("\n").map((line, idx) => (
+                    <div key={idx}>{line}</div>
+                  ))}
+                  
+                  {/* Display uploaded documents as tags */}
+                  {docsToDisplay.length > 0 && (
+                    <div className="user-documents-section">
+                      {docsToDisplay.map((doc, idx) => (
+                        <div 
+                          key={idx} 
+                          className="document-tag"
+                          onClick={() => setSelectedDocument(doc)}
+                          style={{cursor: 'pointer'}}
+                        >
+                          <span className="document-tag-icon">📎</span>
+                          <span className="document-tag-name">
+                            {doc.filename || `Document ${idx + 1}`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )
+            })()}
           </div>
         </div>
       </div>
@@ -99,8 +168,6 @@ const TurnView: FC<TurnViewProps> = ({
                         maxWidth: "100%",
                         height: "auto",
                         borderRadius: "8px",
-                        marginTop: "12px",
-                        marginBottom: "12px",
                         cursor: "pointer",
                         transition: "transform 0.2s ease-in-out",
                       }}
@@ -112,22 +179,30 @@ const TurnView: FC<TurnViewProps> = ({
                       }}
                     />
                   ),
-                  p: (props: any) => <p {...props} style={{margin: "8px 0"}} />,
-                  h1: (props: any) => <h1 {...props} style={{marginTop: "16px", marginBottom: "8px"}} />,
-                  h2: (props: any) => <h2 {...props} style={{marginTop: "12px", marginBottom: "6px"}} />,
-                  h3: (props: any) => <h3 {...props} style={{marginTop: "10px", marginBottom: "4px"}} />,
-                  ul: (props: any) => <ul {...props} style={{marginLeft: "20px", margin: "8px 0"}} />,
-                  ol: (props: any) => <ol {...props} style={{marginLeft: "20px", margin: "8px 0"}} />,
+                  p: (props: any) => <p {...props} />,
+                  h1: (props: any) => <h1 {...props} />,
+                  h2: (props: any) => <h2 {...props} />,
+                  h3: (props: any) => <h3 {...props} />,
+                  h4: (props: any) => <h4 {...props} />,
+                  h5: (props: any) => <h5 {...props} />,
+                  h6: (props: any) => <h6 {...props} />,
+                  ul: (props: any) => <ul {...props} />,
+                  ol: (props: any) => <ol {...props} />,
+                  li: (props: any) => <li {...props} />,
                   code: (props: any) => 
                     props.inline ? (
-                      <code {...props} style={{backgroundColor: "rgba(0,0,0,0.1)", padding: "2px 6px", borderRadius: "3px"}} />
+                      <code {...props} style={{backgroundColor: "rgba(0,0,0,0.1)", padding: "2px 4px", borderRadius: "3px", fontSize: "0.95em"}} />
                     ) : (
-                      <code {...props} style={{display: "block", backgroundColor: "rgba(0,0,0,0.1)", padding: "12px", borderRadius: "6px", overflow: "auto"}} />
+                      <code {...props} style={{display: "block", backgroundColor: "rgba(0,0,0,0.1)", padding: "10px", borderRadius: "6px", overflow: "auto", fontSize: "0.9em"}} />
                     ),
-                  pre: (props: any) => <pre {...props} style={{margin: "8px 0"}} />,
-                  table: (props: any) => <table {...props} style={{borderCollapse: "collapse", width: "100%", margin: "8px 0"}} />,
-                  th: (props: any) => <th {...props} style={{border: "1px solid #ccc", padding: "8px", textAlign: "left"}} />,
-                  td: (props: any) => <td {...props} style={{border: "1px solid #ccc", padding: "8px"}} />,
+                  pre: (props: any) => <pre {...props} />,
+                  blockquote: (props: any) => <blockquote {...props} style={{paddingLeft: "12px", borderLeft: "3px solid #666"}} />,
+                  table: (props: any) => <table {...props} style={{borderCollapse: "collapse", width: "100%", fontSize: "0.95em"}} />,
+                  th: (props: any) => <th {...props} style={{border: "1px solid #666", padding: "4px", textAlign: "left"}} />,
+                  td: (props: any) => <td {...props} style={{border: "1px solid #666", padding: "4px"}} />,
+                  hr: (props: any) => <hr {...props} />,
+                  strong: (props: any) => <strong {...props} />,
+                  em: (props: any) => <em {...props} />,
                 }}
               >
                 {assistantMessage.content}
@@ -189,6 +264,30 @@ const TurnView: FC<TurnViewProps> = ({
           isOpen={!!selectedImage}
           onClose={() => setSelectedImage(null)}
         />
+      )}
+
+      {/* Document Modal */}
+      {selectedDocument && (
+        <div className="document-modal-overlay" onClick={() => setSelectedDocument(null)}>
+          <div className="document-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="document-modal-header">
+              <h2>{selectedDocument.filename}</h2>
+              <button 
+                className="document-modal-close"
+                onClick={() => setSelectedDocument(null)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="document-modal-content markdown-content">
+              <ReactMarkdown 
+                remarkPlugins={[remarkGfm]}
+              >
+                {selectedDocument.markdown_content}
+              </ReactMarkdown>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -41,7 +41,7 @@ interface UseChatStreamResult {
   threads: ThreadSummary[];
   messages: ChatMessage[];
   isStreaming: boolean;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, documents?: Array<{filename: string; format: string; markdown_content: string}>) => Promise<void>;
   switchThread: (threadId: string) => Promise<void>;
   createThread: () => void;
   deleteThread: (threadId: string) => Promise<void>;
@@ -310,7 +310,11 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
             return;
           }
 
-          if (messageType === "complete") {
+          if (messageType === "complete" || nodeName === "workflow") {
+            // 工作流完成，关闭 WebSocket 连接
+            if (wsRef.current) {
+              wsRef.current.close();
+            }
             return;
           }
 
@@ -520,7 +524,7 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
   );
 
   const sendMessage = useCallback(
-    async (content: string) => {
+    async (content: string, documents?: Array<{filename: string; format: string; markdown_content: string}>) => {
       const threadId = await ensureThread();
       
       // 清理之前实时流遗留的节点消息（保留用户和助手消息）
@@ -533,6 +537,7 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
         role: "user",
         content,
         timestamp: Date.now(),
+        documents: documents && documents.length > 0 ? documents : undefined,
       };
       setMessages((prev) => [...prev, userMessage]);
 
@@ -559,17 +564,24 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
 
       attachWebSocket(threadId);
 
+      const requestBody: any = {
+        thread_id: threadId,
+        user_id: userId,
+        message: content,
+        chat_model: chatModel,
+      };
+
+      // 如果有上传的文档，传递完整的文档元数据给后端
+      if (documents && documents.length > 0) {
+        requestBody.documents = documents;
+      }
+
       await fetch(`${API_BASE}/chat/stream`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          thread_id: threadId,
-          user_id: userId,
-          message: content,
-          chat_model: chatModel,
-        }),
+        body: JSON.stringify(requestBody),
       });
     },
     [ensureThread, attachWebSocket, userId, chatModel, generateTitleFromMessage],

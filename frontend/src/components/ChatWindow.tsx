@@ -11,8 +11,8 @@ const AVAILABLE_MODELS = [
 ] as const;
 
 interface SettingsMenuProps {
-  chatModel: string;
-  onChatModelChange: (model: string) => void;
+  chatModel?: string;
+  onChatModelChange?: (model: string) => void;
 }
 
 const SettingsMenu: FC<SettingsMenuProps> = ({ chatModel, onChatModelChange }) => {
@@ -29,10 +29,6 @@ const SettingsMenu: FC<SettingsMenuProps> = ({ chatModel, onChatModelChange }) =
 
   const toggleTheme = () => {
     setTheme((prev) => (prev === "dark" ? "light" : "dark"));
-  };
-
-  const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    onChatModelChange(e.target.value);
   };
 
   return (
@@ -64,25 +60,6 @@ const SettingsMenu: FC<SettingsMenuProps> = ({ chatModel, onChatModelChange }) =
                   <span className="toggle-slider"></span>
                 </label>
                 <span className="settings-value">{theme === "dark" ? "暗黑模式" : "浅色模式"}</span>
-              </div>
-            </div>
-          </div>
-          <div className="settings-section">
-            <div className="settings-section-title">模型设置</div>
-            <div className="settings-item">
-              <label className="settings-label">Chat Model</label>
-              <div className="settings-control">
-                <select
-                  className="settings-select"
-                  value={chatModel}
-                  onChange={handleModelChange}
-                >
-                  {AVAILABLE_MODELS.map((model) => (
-                    <option key={model.value} value={model.value}>
-                      {model.label}
-                    </option>
-                  ))}
-                </select>
               </div>
             </div>
           </div>

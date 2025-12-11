@@ -67,6 +67,9 @@ class Settings:
     chunk_overlap: int
     retriever_top_k: int
     redis_url: Optional[str]
+    redis_stream_enabled: bool
+    stream_ttl_seconds: int
+    stream_max_length: int
     workflow_timeout_seconds: int
     # LangSmith 配置
     langsmith_api_key: Optional[str]
@@ -105,6 +108,9 @@ def get_settings() -> Settings:
         chunk_overlap=_coerce_int("CHUNK_OVERLAP", 200),
         retriever_top_k=_coerce_int("RETRIEVER_TOP_K", 4),
         redis_url=os.getenv("REDIS_URL"),
+        redis_stream_enabled=os.getenv("REDIS_STREAM_ENABLED", "false").lower() == "true",
+        stream_ttl_seconds=_coerce_int("STREAM_TTL_SECONDS", 3600),
+        stream_max_length=_coerce_int("STREAM_MAX_LENGTH", 1000),
         workflow_timeout_seconds=_coerce_int("WORKFLOW_TIMEOUT_SECONDS", 300),
         # LangSmith 配置
         langsmith_api_key=os.getenv("LANGCHAIN_API_KEY"),

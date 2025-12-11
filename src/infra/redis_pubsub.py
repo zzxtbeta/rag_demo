@@ -117,9 +117,9 @@ class RedisPublisher:
     """工作流流式事件的高层发布器。
 
     职责：
-    - 封装 Redis Pub/Sub 发布逻辑
+    - 支持 Redis Pub/Sub 和 Stream 两种发布方式
     - 提供便捷的节点事件发布方法
-    - 统一频道命名规范：workflow:{thread_id}:{node_name}:{message_type}
+    - 通过功能开关支持灰度迁移
     """
 
     def __init__(self, client: Redis | None = None) -> None:
@@ -129,6 +129,10 @@ class RedisPublisher:
         - client: Redis 客户端实例，如果为 None 则使用全局单例
         """
         self._client: Redis = client or get_redis_client()
+        settings = get_settings()
+        self._stream_enabled = settings.redis_stream_enabled
+        self._stream_ttl = settings.stream_ttl_seconds
+        self._stream_max_length = settings.stream_max_length
 
     @staticmethod
     def _channel(thread_id: str, node_name: str, message_type: str) -> str:
@@ -140,22 +144,77 @@ class RedisPublisher:
         """
         return f"workflow:{thread_id}:{node_name}:{message_type}"
 
-    async def publish_message(self, message: StreamMessage) -> None:
-        """发布消息到 Redis Pub/Sub。
+    @staticmethod
+    def _stream_key(thread_id: str) -> str:
+        """生成 Redis Stream key。
 
-        ✅ 流程：
-        1. 根据消息的 thread_id、node_name、message_type 生成频道名
-        2. 将消息序列化为 JSON
-        3. 发布到 Redis
-        4. 记录日志（成功或失败）
+        格式：workflow:execution:{thread_id}
+
+        示例：workflow:execution:thread_123
+        """
+        return f"workflow:execution:{thread_id}"
+
+    async def _publish_to_stream(self, message: StreamMessage) -> str | None:
+        """发布消息到 Redis Stream。
+
+        返回消息 ID，失败时返回 None。
+        """
+        try:
+            stream_key = self._stream_key(message.thread_id)
+            fields = {
+                "node_name": message.node_name,
+                "message_type": message.message_type,
+                "status": message.status,
+                "timestamp": str(message.timestamp),
+                "data": json.dumps(message.data, ensure_ascii=False, default=str),
+            }
+            if message.execution_time_ms is not None:
+                fields["execution_time_ms"] = str(message.execution_time_ms)
+
+            # 添加到 Stream
+            message_id = await self._client.xadd(stream_key, fields)
+
+            # ✅ 关键修复：将 message_id 保存到字段中
+            # 这样前端和后端可以使用相同的 ID 系统
+            # 后续查询历史时，可以从 Stream 中读取原始的 message_id
+            await self._client.hset(
+                f"stream_message_ids:{message.thread_id}",
+                message_id,
+                message_id
+            )
+
+            # 自动清理：限制 Stream 长度
+            await self._client.xtrim(
+                stream_key, maxlen=self._stream_max_length, approximate=True
+            )
+
+            # 设置过期时间
+            await self._client.expire(stream_key, self._stream_ttl)
+
+            logger.debug(f"Published to stream {stream_key}: {message_id}")
+            return message_id
+        except Exception as e:
+            logger.error(f"Failed to publish to stream: {e}", exc_info=True)
+            return None
+
+    async def publish_message(self, message: StreamMessage) -> None:
+        """发布消息到 Redis。
+
+        根据配置，发布到 Stream 和/或 Pub/Sub。
 
         参数：
         - message: StreamMessage 实例
 
         注意：
         - 发布失败会记录错误日志，但不会抛出异常
-        - 确保消息已正确序列化后再调用此方法
+        - 如果 Stream 启用，优先发布到 Stream
+        - 总是发布到 Pub/Sub（向后兼容）
         """
+        # 发布到 Stream（如果启用）
+        if self._stream_enabled:
+            await self._publish_to_stream(message)
+
+        # 发布到 Pub/Sub（向后兼容）
         channel = self._channel(
             message.thread_id, message.node_name, message.message_type
         )

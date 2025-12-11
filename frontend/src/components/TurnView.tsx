@@ -3,6 +3,7 @@ import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import NodeTimeline from "./NodeTimeline";
+import ImageModal from "./ImageModal";
 import type { ChatMessage, NodeStep } from "../types";
 
 interface TurnViewProps {
@@ -19,6 +20,7 @@ const TurnView: FC<TurnViewProps> = ({
   const [copied, setCopied] = useState(false);
   const [liked, setLiked] = useState(false);
   const [disliked, setDisliked] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<{ src: string; alt: string } | null>(null);
 
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp);
@@ -92,12 +94,21 @@ const TurnView: FC<TurnViewProps> = ({
                   img: (props: any) => (
                     <img 
                       {...props} 
+                      onClick={() => setSelectedImage({ src: props.src, alt: props.alt || "Image" })}
                       style={{
                         maxWidth: "100%",
                         height: "auto",
                         borderRadius: "8px",
                         marginTop: "12px",
-                        marginBottom: "12px"
+                        marginBottom: "12px",
+                        cursor: "pointer",
+                        transition: "transform 0.2s ease-in-out",
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.target as HTMLImageElement).style.transform = "scale(1.02)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.target as HTMLImageElement).style.transform = "scale(1)";
                       }}
                     />
                   ),
@@ -168,6 +179,16 @@ const TurnView: FC<TurnViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Image Modal */}
+      {selectedImage && (
+        <ImageModal
+          src={selectedImage.src}
+          alt={selectedImage.alt}
+          isOpen={!!selectedImage}
+          onClose={() => setSelectedImage(null)}
+        />
       )}
     </div>
   );

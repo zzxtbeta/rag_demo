@@ -1647,4 +1647,115 @@ body {
   color: #1d4ed8;
 }
 
+/* Image Modal Styles */
+.image-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.2s ease-out;
+  backdrop-filter: blur(4px);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.image-modal-content {
+  position: relative;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: zoomIn 0.3s ease-out;
+}
+
+@keyframes zoomIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.image-modal-image {
+  max-width: 100%;
+  max-height: 80vh;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  object-fit: contain;
+}
+
+.image-modal-close {
+  position: absolute;
+  top: -40px;
+  right: 0;
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: #e5e7eb;
+  cursor: pointer;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  z-index: 10001;
+}
+
+.image-modal-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  transform: rotate(90deg);
+}
+
+.image-modal-info {
+  margin-top: 16px;
+  text-align: center;
+  color: #d1d5db;
+  font-size: 13px;
+  max-width: 90vw;
+  word-break: break-word;
+}
+
+.image-modal-info p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Light theme for image modal */
+[data-theme="light"] .image-modal-overlay {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+[data-theme="light"] .image-modal-close {
+  background: rgba(0, 0, 0, 0.2);
+  color: #374151;
+}
+
+[data-theme="light"] .image-modal-close:hover {
+  background: rgba(0, 0, 0, 0.3);
+  color: #1f2937;
+}
+
+[data-theme="light"] .image-modal-info {
+  color: #6b7280;
+}
+
 

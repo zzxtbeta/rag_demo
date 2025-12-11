@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChatMessage, ThreadSummary } from "../types";
+import { ChatMessage, ThreadSummary, TraceStats } from "../types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
@@ -10,6 +10,30 @@ const STORAGE_KEY_CHAT_MODEL = "chat_model";
 // 生成消息存储的 key
 function getMessagesStorageKey(threadId: string): string {
   return `chat_messages_${threadId}`;
+}
+
+// 生成 last_id 存储的 key（用于 Redis Stream 续订）
+function getLastIdStorageKey(threadId: string): string {
+  return `stream_last_id_${threadId}`;
+}
+
+// 从 localStorage 加载 last_id
+function loadLastIdFromStorage(threadId: string): string | null {
+  try {
+    return localStorage.getItem(getLastIdStorageKey(threadId));
+  } catch (error) {
+    console.error("Failed to load last_id from storage:", error);
+  }
+  return null;
+}
+
+// 保存 last_id 到 localStorage
+function saveLastIdToStorage(threadId: string, lastId: string): void {
+  try {
+    localStorage.setItem(getLastIdStorageKey(threadId), lastId);
+  } catch (error) {
+    console.error("Failed to save last_id to storage:", error);
+  }
 }
 
 interface UseChatStreamResult {
@@ -109,6 +133,7 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
     const saved = localStorage.getItem(STORAGE_KEY_CHAT_MODEL);
     return saved || "qwen-plus-latest";
   });
+  const [traceStats, setTraceStats] = useState<TraceStats | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -122,14 +147,19 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
     saveActiveThreadToStorage(activeThreadId);
   }, [activeThreadId]);
 
-  // 注意：不再自动保存节点消息到 LocalStorage
-  // 因为节点消息现在完全由后端 API（LangSmith Trace）重构
-  // 只在流式执行时临时保存，刷新时会从后端重新加载
-  // useEffect(() => {
-  //   if (activeThreadId && messages.length > 0) {
-  //     saveMessagesToStorage(activeThreadId, messages);
-  //   }
-  // }, [messages, activeThreadId]);
+  // 自动保存消息到 localStorage（用于刷新恢复）
+  // 只保存用户和助手消息，节点消息由后端 API 重构
+  useEffect(() => {
+    if (activeThreadId && messages.length > 0) {
+      // 过滤出用户和助手消息（排除节点消息）
+      const chatMessages = messages.filter(
+        (msg) => msg.role === "user" || msg.role === "assistant"
+      );
+      if (chatMessages.length > 0) {
+        saveMessagesToStorage(activeThreadId, chatMessages);
+      }
+    }
+  }, [messages, activeThreadId]);
 
   // 初始化时，如果有 activeThreadId，加载历史记录
   useEffect(() => {
@@ -167,16 +197,8 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
 
   const loadThreadHistory = useCallback(async (threadId: string) => {
     // 添加 Loading 占位消息
-    setMessages([{
-      id: 'loading',
-      threadId,
-      role: 'system',
-      content: '正在加载历史记录...',
-      timestamp: Date.now(),
-    }]);
-    
     try {
-      const response = await fetch(`${API_BASE}/chat/threads/${encodeURIComponent(threadId)}/history-with-trace`);
+      const response = await fetch(`${API_BASE}/chat/threads/${encodeURIComponent(threadId)}/history`);
       if (!response.ok) {
         if (response.status === 404) {
           setMessages([]);
@@ -186,40 +208,24 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
       }
       const data = await response.json();
       
-      // 简化历史消息重构：只加载用户和助手消息
-      // 实时节点执行过程不会持久化，刷新后不显示
-      const reconstructedMessages: ChatMessage[] = [];
-      
-      // 直接加载用户和助手消息（使用数据库中的时间戳）
-      data.messages.forEach((msg: any, index: number) => {
-        const baseId = msg.id || `${threadId}_history_${index}`;
-        
-        // 使用数据库中保存的时间戳（秒 → 毫秒）
-        const timestamp = msg.timestamp ? msg.timestamp * 1000 : Date.now() - (data.messages.length - index) * 1000;
+      const reconstructedMessages: ChatMessage[] = data.messages
+        .filter((msg: any) => msg.role === 'user' || msg.role === 'assistant')
+        .map((msg: any, index: number) => {
+          const timestamp = msg.timestamp
+            ? msg.timestamp * 1000
+            : Date.now() - (data.messages.length - index) * 1000;
+          return {
+            id: msg.id || `${threadId}_history_${index}`,
+            threadId,
+            role: msg.role,
+            content: msg.content || '',
+            timestamp,
+          } as ChatMessage;
+        })
+        .sort((a: ChatMessage, b: ChatMessage) => a.timestamp - b.timestamp);
 
-        if (msg.role === 'user') {
-          reconstructedMessages.push({
-            id: baseId,
-            threadId,
-            role: 'user',
-            content: msg.content,
-            timestamp
-          });
-        } else if (msg.role === 'assistant') {
-          reconstructedMessages.push({
-            id: baseId,
-            threadId,
-            role: 'assistant',
-            content: msg.content,
-            timestamp
-          });
-        }
-        // 忽略其他类型的消息（如 tool、system）
-      });
-      
-      // 按时间戳排序确保正确的执行顺序
-      reconstructedMessages.sort((a, b) => a.timestamp - b.timestamp);
       setMessages(reconstructedMessages);
+      saveMessagesToStorage(threadId, reconstructedMessages);
 
       // 更新标题（如果需要）
       const firstUserMessage = reconstructedMessages.find((msg) => msg.role === "user");
@@ -273,17 +279,36 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
       if (wsRef.current) {
         wsRef.current.close();
       }
-      const wsUrl = API_BASE.replace(/^http/, "ws") + `/ws/${encodeURIComponent(threadId)}`;
+      
+      // 从 localStorage 恢复 last_id（用于 Redis Stream 续订）
+      const lastId = loadLastIdFromStorage(threadId);
+      const wsUrl = lastId 
+        ? API_BASE.replace(/^http/, "ws") + `/ws/${encodeURIComponent(threadId)}?last_id=${encodeURIComponent(lastId)}`
+        : API_BASE.replace(/^http/, "ws") + `/ws/${encodeURIComponent(threadId)}`;
+      
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          
+          // 保存 message_id 用于续订（Redis Stream 功能）
+          if (data.message_id) {
+            saveLastIdToStorage(threadId, data.message_id);
+          }
+          
           const threadIdFromData = data.thread_id ?? threadId;
           const nodeName = data.node_name;
           const messageType = data.message_type;
           const rawData = data.data ?? {};
+          const isHistory = data.is_history === true;  // 标志是否为历史消息
+
+          // 忽略历史消息（它们已经从 loadThreadHistory 加载了）
+          // 只处理新的实时消息
+          if (isHistory) {
+            return;
+          }
 
           if (messageType === "complete") {
             return;
@@ -333,11 +358,11 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
                         : msg,
                     );
                   } else {
-                    // 创建新的 generate 消息
+                    // 创建新的 generate 消息，使用后端返回的 ID（如果有）
                     return [
                       ...filteredMessages,
                       {
-                        id: `${Date.now()}_ai_${Math.random().toString(36).slice(2)}`,
+                        id: data.id || data.message_id || `${Date.now()}_ai_${Math.random().toString(36).slice(2)}`,
                         threadId: threadIdFromData,
                         role: "assistant" as const,
                         content: token,
@@ -357,11 +382,11 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
                       : msg,
                   );
                 } else {
-                  // 否则创建新的 assistant 消息
+                  // 否则创建新的 assistant 消息，使用后端返回的 ID（如果有）
                   return [
                     ...prev,
                     {
-                      id: `${Date.now()}_ai_${Math.random().toString(36).slice(2)}`,
+                      id: data.id || data.message_id || `${Date.now()}_ai_${Math.random().toString(36).slice(2)}`,
                       threadId: threadIdFromData,
                       role: "assistant" as const,
                       content: token,
@@ -572,6 +597,7 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
     updateThreadTitle,
     chatModel,
     setChatModel,
+    traceStats,
   };
 }
 

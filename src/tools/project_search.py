@@ -96,28 +96,9 @@ class ProjectSearchClient:
 
 
 def _format_project(project: dict) -> str:
-    """Format single project for LLM consumption."""
-    lines = []
-    lines.append(f"**{project.get('project_name', 'N/A')}**")
-
-    if company := project.get("company_name"):
-        lines.append(f"- 公司：{company}")
-
-    if industry := project.get("industry"):
-        lines.append(f"- 行业：{industry}")
-
-    if tech := project.get("core_technology"):
-        # Truncate if too long
-        tech = tech[:200] + "..." if len(tech) > 200 else tech
-        lines.append(f"- 核心技术：{tech}")
-
-    if team := project.get("core_team"):
-        if isinstance(team, list) and team:
-            team_names = [t.get("name") for t in team if t.get("name")]
-            if team_names:
-                lines.append(f"- 团队：{', '.join(team_names)}")
-
-    return "\n".join(lines)
+    """Return complete project data as formatted JSON string for LLM."""
+    import json
+    return json.dumps(project, ensure_ascii=False, indent=2)
 
 
 async def _search_projects_impl(query: str) -> str:

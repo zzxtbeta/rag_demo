@@ -21,6 +21,7 @@ from langgraph.store.base import BaseStore
 from agent import prompts
 from config.settings import get_settings
 from tools.retrieval import retrieve_context
+from tools.project_search import search_projects
 from utils.llm import load_chat_model
 
 
@@ -76,7 +77,7 @@ def _extract_retrieved_context(messages: List) -> str:
 # ============================================================================
 
 async def query_or_respond(state: MessagesState, config: Optional[RunnableConfig] = None):
-    """Call LLM with retrieval tool to decide if documents are needed.
+    """Call LLM with retrieval tools to decide if documents/projects are needed.
     
     Args:
         state: MessagesState with user question
@@ -92,8 +93,14 @@ async def query_or_respond(state: MessagesState, config: Optional[RunnableConfig
     elif config and isinstance(config, dict) and "configurable" in config:
         chat_model = config["configurable"].get("chat_model")
     
+    # Build tools list based on configuration
+    tools = [retrieve_context]
+    settings = get_settings()
+    if settings.project_search_enabled:
+        tools.append(search_projects)
+    
     llm = _get_llm(chat_model)
-    llm_with_tools = llm.bind_tools([retrieve_context])
+    llm_with_tools = llm.bind_tools(tools)
     response = await llm_with_tools.ainvoke(
         _prepend_system_prompt(state["messages"])
     )
@@ -135,9 +142,15 @@ async def generate(state: MessagesState, config: Optional[RunnableConfig] = None
 # Initialize workflow
 workflow = StateGraph(MessagesState)
 
+# Build tools list based on configuration
+_tools = [retrieve_context]
+_settings = get_settings()
+if _settings.project_search_enabled:
+    _tools.append(search_projects)
+
 # Add nodes
 workflow.add_node("query_or_respond", query_or_respond)
-workflow.add_node("tools", ToolNode([retrieve_context]))
+workflow.add_node("tools", ToolNode(_tools))
 workflow.add_node("generate", generate)
 
 # Set entry point

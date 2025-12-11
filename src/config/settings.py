@@ -78,6 +78,13 @@ class Settings:
     # Document processing 配置
     frontend_images_dir: str
     frontend_image_prefix: str
+    # Project search API 配置
+    project_search_api_url: Optional[str]
+    project_search_api_username: Optional[str]
+    project_search_api_password: Optional[str]
+    project_search_enabled: bool
+    # Project search database 配置（如果直接访问数据库而非 API）
+    project_search_db_url: Optional[str]
 
     @property
     def psycopg_connection(self) -> str:
@@ -119,6 +126,13 @@ def get_settings() -> Settings:
         # Document processing 配置
         frontend_images_dir=os.getenv("FRONTEND_IMAGES_DIR", "./frontend/public/documents/images"),
         frontend_image_prefix=os.getenv("FRONTEND_IMAGE_PREFIX", "/documents/images"),
+        # Project search API 配置
+        project_search_api_url=os.getenv("PROJECT_SEARCH_API_URL"),
+        project_search_api_username=os.getenv("PROJECT_SEARCH_API_USERNAME"),
+        project_search_api_password=os.getenv("PROJECT_SEARCH_API_PASSWORD"),
+        project_search_enabled=os.getenv("PROJECT_SEARCH_ENABLED", "true").lower() == "true",
+        # Project search database 配置
+        project_search_db_url=os.getenv("PROJECT_SEARCH_DB_URL"),
     )
 
 

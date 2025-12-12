@@ -1,4 +1,4 @@
-"""Define the runtime context information for the agent."""
+"""定义代理的运行时上下文信息。"""
 
 import os
 from dataclasses import dataclass, field, fields
@@ -10,7 +10,7 @@ from agent import prompts
 
 @dataclass(kw_only=True)
 class Context:
-    """Runtime context for the Agentic RAG system."""
+    """代理式 RAG 系统的运行时上下文。"""
 
     chat_model: Annotated[str, {"__template_metadata__": {"kind": "llm"}}] = field(
         default="qwen-plus-latest",
@@ -21,7 +21,7 @@ class Context:
     )
 
     def __post_init__(self):
-        """Fetch env vars for attributes that were not passed as args."""
+        """获取未作为参数传递的属性的环境变量。"""
         for f in fields(self):
             if not f.init:
                 continue

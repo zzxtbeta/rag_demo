@@ -1,4 +1,4 @@
-"""Database connection utilities."""
+"""数据库连接工具。"""
 
 from __future__ import annotations
 
@@ -13,13 +13,13 @@ logger = logging.getLogger(__name__)
 
 
 class DatabaseManager:
-    """Async connection pool manager for PostgreSQL."""
+    """PostgreSQL 的异步连接池管理器。"""
 
     _pool: Optional[AsyncConnectionPool] = None
 
     @classmethod
     async def initialize(cls, db_uri: Optional[str] = None, max_size: int = 20) -> None:
-        """Initialize the global connection pool."""
+        """初始化全局连接池。"""
         if cls._pool is not None:
             logger.debug("Database connection pool already initialized")
             return
@@ -42,7 +42,7 @@ class DatabaseManager:
 
     @classmethod
     async def get_pool(cls) -> AsyncConnectionPool:
-        """Return the connection pool, initializing it if necessary."""
+        """返回连接池，必要时初始化。"""
         if cls._pool is None:
             await cls.initialize()
         assert cls._pool is not None
@@ -50,7 +50,7 @@ class DatabaseManager:
 
     @classmethod
     async def close(cls) -> None:
-        """Close the connection pool."""
+        """关闭connection pool。"""
         if cls._pool is not None:
             await cls._pool.close()
             cls._pool = None

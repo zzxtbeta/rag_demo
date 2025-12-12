@@ -1,4 +1,4 @@
-"""PostgreSQL-backed checkpointer manager."""
+"""PostgreSQL 支持的 checkpointer 管理器。"""
 
 from __future__ import annotations
 
@@ -14,13 +14,13 @@ logger = logging.getLogger(__name__)
 
 
 class CheckpointerManager:
-    """Singleton wrapper around LangGraph AsyncPostgresSaver."""
+    """LangGraph AsyncPostgresSaver 的单例包装器。"""
 
     _checkpointer: Optional[AsyncPostgresSaver] = None
 
     @classmethod
     async def initialize(cls, db_uri: Optional[str] = None) -> None:
-        """Initialize the Postgres-backed checkpointer."""
+        """初始化 Postgres 支持的 checkpointer。"""
         if cls._checkpointer is not None:
             logger.debug("Checkpointer already initialized")
             return
@@ -40,14 +40,14 @@ class CheckpointerManager:
 
     @classmethod
     def get_checkpointer(cls) -> AsyncPostgresSaver:
-        """Return the active checkpointer instance."""
+        """返回活跃的 checkpointer 实例。"""
         if cls._checkpointer is None:
             raise RuntimeError("Checkpointer not initialized")
         return cls._checkpointer
 
     @classmethod
     async def close(cls) -> None:
-        """Clear the checkpointer instance."""
+        """清除 checkpointer 实例。"""
         if cls._checkpointer is not None:
             close = getattr(cls._checkpointer, "aclose", None)
             if callable(close):

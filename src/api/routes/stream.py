@@ -1,4 +1,4 @@
-"""Streaming/WebSocket endpoints."""
+"""流式/WebSocket 端点。"""
 
 from __future__ import annotations
 

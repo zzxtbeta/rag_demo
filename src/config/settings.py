@@ -32,7 +32,7 @@ def _coerce_int(name: str, default: int) -> int:
 
 
 def _normalize_conn_string(conn_str: str) -> str:
-    """Ensure connection string query params are well-formed."""
+    """确保连接字符串查询参数格式正确。"""
     parts = urlsplit(conn_str)
     if not parts.query:
         return conn_str
@@ -54,18 +54,21 @@ def _normalize_conn_string(conn_str: str) -> str:
 
 @dataclass(frozen=True)
 class Settings:
-    """Immutable settings object loaded from environment variables."""
+    """不可变设置对象，从环境变量加载。"""
 
     chat_model: str
-    dascope_api_key: Optional[str]
+    dashscope_api_key: Optional[str]
     dascope_base_url: Optional[str]
-    openai_embeddings_api_key: str
+    embeddings_model: str
     litellm_base_url: Optional[str]
     postgres_connection_string: str
     default_collection: str
     chunk_size: int
     chunk_overlap: int
     retriever_top_k: int
+    rerank_enabled: bool
+    rerank_model: str
+    rerank_top_n: int
     redis_url: Optional[str]
     redis_stream_enabled: bool
     stream_ttl_seconds: int
@@ -88,7 +91,7 @@ class Settings:
 
     @property
     def psycopg_connection(self) -> str:
-        """Coerce connection string to psycopg3 driver URI."""
+        """将连接字符串强制为 psycopg3 驱动程序 URI。"""
         conn_str = self.postgres_connection_string
         if conn_str.startswith("postgresql://"):
             return conn_str.replace("postgresql://", "postgresql+psycopg://", 1)
@@ -99,21 +102,24 @@ class Settings:
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Return a cached settings instance."""
+    """返回缓存的设置实例。"""
     raw_conn = _require_env("POSTGRES_CONNECTION_STRING")
     normalized_conn = _normalize_conn_string(raw_conn)
 
     return Settings(
         chat_model=os.getenv("CHAT_MODEL", "qwen-plus-latest"),
-        dascope_api_key=os.getenv("DASHSCOPE_API_KEY"),
+        dashscope_api_key=os.getenv("DASHSCOPE_API_KEY"),
         dascope_base_url=os.getenv("DASHSCOPE_BASE_URL"),
-        openai_embeddings_api_key=_require_env("OPENAI_EMBEDDINGS_API_KEY"),
+        embeddings_model=os.getenv("EMBEDDINGS_MODEL", "text-embedding-v4"),
         litellm_base_url=os.getenv("LITELLM_BASE_URL"),
         postgres_connection_string=normalized_conn,
         default_collection=os.getenv("VECTOR_COLLECTION", "pdf_documents"),
         chunk_size=_coerce_int("CHUNK_SIZE", 1000),
         chunk_overlap=_coerce_int("CHUNK_OVERLAP", 200),
         retriever_top_k=_coerce_int("RETRIEVER_TOP_K", 4),
+        rerank_enabled=os.getenv("RERANK_ENABLED", "false").lower() == "true",
+        rerank_model=os.getenv("RERANK_MODEL", "qwen3-rerank"),
+        rerank_top_n=_coerce_int("RERANK_TOP_N", 3),
         redis_url=os.getenv("REDIS_URL"),
         redis_stream_enabled=os.getenv("REDIS_STREAM_ENABLED", "false").lower() == "true",
         stream_ttl_seconds=_coerce_int("STREAM_TTL_SECONDS", 3600),

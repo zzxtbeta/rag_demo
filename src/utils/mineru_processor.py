@@ -1,4 +1,4 @@
-"""MinerU document processor for handling parsed PDF outputs."""
+"""MinerU 文档处理器，用于处理已解析的 PDF 输出。"""
 
 import logging
 import re
@@ -17,12 +17,12 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
-# Schemas
+# 模式
 # ============================================================================
 
 
 class ProcessingRequest(BaseModel):
-    """Request schema for document processing."""
+    """文档处理的请求模式。"""
 
     source_path: str = Field(
         ...,
@@ -39,7 +39,7 @@ class ProcessingRequest(BaseModel):
 
 
 class ProcessingResponse(BaseModel):
-    """Response schema for document processing."""
+    """文档处理的响应模式。"""
 
     status: str = Field(description="Processing status: success or error")
     message: str = Field(description="Status message")
@@ -51,15 +51,15 @@ class ProcessingResponse(BaseModel):
 
 
 # ============================================================================
-# Processor
+# 处理器
 # ============================================================================
 
 
 class MineruProcessor:
-    """Process MinerU-parsed documents (Markdown + images)."""
+    """处理 MinerU 解析的文档（Markdown + 图片）。"""
 
     def __init__(self):
-        """Initialize processor with settings."""
+        """使用设置初始化处理器。"""
         self.settings = get_settings()
         self.chunk_size = self.settings.chunk_size
         self.chunk_overlap = self.settings.chunk_overlap
@@ -71,15 +71,15 @@ class MineruProcessor:
         collection_name: Optional[str] = None,
     ) -> dict:
         """
-        Process MinerU output directory.
+        处理 MinerU 输出目录。
 
-        Args:
-            source_path: Path to MinerU output directory (containing auto/ subdirectory)
-            embed: Whether to perform vector embedding
-            collection_name: Vector store collection name (uses default if None)
+        参数：
+            source_path: MinerU 输出目录的路径（包含 auto/ 子目录）
+            embed: 是否执行向量嵌入
+            collection_name: 向量存储集合名称（如果为 None 使用默认值）
 
-        Returns:
-            Dictionary with processing results
+        返回：
+            包含处理结果的字典
         """
         source_dir = Path(source_path)
 
@@ -127,21 +127,21 @@ class MineruProcessor:
 
     def _copy_images(self, auto_dir: Path) -> int:
         """
-        Copy images from MinerU output to frontend public directory.
+        从 MinerU 输出复制图片到前端公共目录。
 
-        Args:
-            auto_dir: Path to MinerU auto directory
+        参数：
+            auto_dir: MinerU auto 目录的路径
 
-        Returns:
-            Number of images copied
+        返回：
+            复制的图片数量
         """
         images_src = auto_dir / "images"
         if not images_src.exists():
             logger.warning(f"Images directory not found: {images_src}")
             return 0
 
-        # Create target directory in frontend
-        # Convert to absolute path to avoid issues with relative paths
+        # 在前端创建目标目录
+        # 转换为绝对路径以避免相对路径的问题
         images_target = Path(self.settings.frontend_images_dir).resolve()
         images_target.mkdir(parents=True, exist_ok=True)
 
@@ -157,15 +157,15 @@ class MineruProcessor:
 
     def _update_image_paths(self, content: str) -> str:
         """
-        Update image paths in markdown from local to frontend-accessible paths.
+        更新 markdown 中的图片路径，从本地路径更新为前端可访问的路径。
 
-        Args:
-            content: Original markdown content
+        参数：
+            content: 原始 markdown 内容
 
-        Returns:
-            Updated markdown content
+        返回：
+            更新后的 markdown 内容
         """
-        # Match pattern: ![](images/filename.ext)
+        # 匹配模式：![](images/filename.ext)
         pattern = r"!\[\]\(images/([^)]+)\)"
 
         def replace_path(match):
@@ -180,14 +180,14 @@ class MineruProcessor:
 
     def _split_content(self, content: str, source_name: str) -> List[Document]:
         """
-        Split markdown content into chunks.
+        将 markdown 内容分割成块。
 
-        Args:
-            content: Markdown content
-            source_name: Source document name for metadata
+        参数：
+            content: Markdown 内容
+            source_name: 元数据的源文档名称
 
-        Returns:
-            List of Document objects
+        返回：
+            Document 对象列表
         """
         splitter = RecursiveCharacterTextSplitter(
             chunk_size=self.chunk_size,
@@ -224,11 +224,11 @@ class MineruProcessor:
 
     def _embed_documents(self, documents: List[Document], collection_name: str) -> None:
         """
-        Embed documents and store in vector database.
+        嵌入文档并存储到向量数据库。
 
-        Args:
-            documents: List of Document objects to embed
-            collection_name: Vector store collection name
+        参数：
+            documents: 要嵌入的 Document 对象列表
+            collection_name: 向量存储集合名称
         """
         vector_store = get_vector_store(collection_name)
         vector_store.add_documents(documents)

@@ -1,4 +1,4 @@
-"""Utility modules for the RAG system."""
+"""RAG 系统的实用工具模块。"""
 
 from .mineru_processor import MineruProcessor, ProcessingRequest, ProcessingResponse
 from .llm import load_chat_model

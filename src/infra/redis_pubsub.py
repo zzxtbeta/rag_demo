@@ -1,4 +1,4 @@
-"""Async Redis Pub/Sub utilities."""
+"""异步 Redis Pub/Sub 工具。"""
 
 from __future__ import annotations
 
@@ -87,7 +87,7 @@ class StreamMessage:
         """
 
         def _default(obj: Any):
-            """Convert non-JSON-serializable objects."""
+            """转换不是 JSON 可序列化的对象。"""
             if BaseMessage is not None and isinstance(obj, BaseMessage):
                 if message_to_dict is not None:
                     return message_to_dict(obj)

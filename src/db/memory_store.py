@@ -1,4 +1,4 @@
-"""memory_store.py"""
+"""memory_store.py - 工作流内存存储管理。"""
 
 from typing import Optional, cast, Any
 from langgraph.store.postgres.aio import AsyncPostgresStore
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class MemoryStoreManager:
-    """Workflow memory store manager"""
+    """工作流内存存储管理器"""
 
     _instance: Optional["MemoryStoreManager"] = None
     _store: Optional[AsyncPostgresStore] = None
@@ -23,53 +23,53 @@ class MemoryStoreManager:
     @classmethod
     async def initialize(cls, db_uri: str = None, max_size: int = 20) -> None:
         """
-        Initialize the memory store manager
+        初始化内存存储管理器
 
-        Args:
-            db_uri: database connection URI (unused, kept for compatibility)
-            max_size: maximum number of connections (unused, kept for compatibility)
+        参数：
+            db_uri: 数据库连接 URI（未使用，为兼容性保留）
+            max_size: 最大连接数（未使用，为兼容性保留）
         
-        Note:
-            DatabaseManager must be initialized before calling this method.
-            The db_uri and max_size parameters are kept for backward compatibility
-            but are no longer used.
+        注意：
+            DatabaseManager 必须在调用此方法前初始化。
+            db_uri 和 max_size 参数为了向后兼容性保留
+            但不再使用。
         """
         if cls._store is not None:
-            logger.debug("Memory store already initialized, skipping")
+            logger.debug("内存存储已经初始化，跳过")
             return
 
         try:
-            # Get the already initialized pool from DatabaseManager
+            # 从 DatabaseManager 获取已初始化的池
             pool = await DatabaseManager.get_pool()
             conn = await pool.getconn()
             conn.row_factory = dict_row
 
-            # initialize the memory store
-            # Cast the pool to the expected type to satisfy mypy
+            # 初始化内存存储
+            # 将池转换为预期的类型以满足 mypy
             cls._store = AsyncPostgresStore(conn)
             await cls._store.setup()
-            logger.info("Memory store initialized successfully")
+            logger.info("内存存储初始化成功")
         except Exception as e:
-            logger.error(f"Failed to initialize memory store: {str(e)}")
+            logger.error(f"初始化内存存储失败：{str(e)}")
             raise
 
     @classmethod
     async def get_store(cls) -> AsyncPostgresStore:
         """
-        Get the memory store instance
+        获取内存存储实例
 
-        Returns:
-            AsyncPostgresStore: memory store instance
+        返回：
+            AsyncPostgresStore: 内存存储实例
 
-        Raises:
-            RuntimeError: if the memory store is not initialized
+        会扔出：
+            RuntimeError: 如果内存存储未初始化
         """
         if cls._store is None:
-            raise RuntimeError("Memory store not initialized. Call initialize() first.")
+            raise RuntimeError("内存存储未初始化。请先调用 initialize() 方法。")
         return cls._store
 
     @classmethod
     async def close(cls) -> None:
-        """Close the memory store manager"""
+        """关闭内存存储管理器"""
         cls._store = None
-        logger.info("Memory store closed successfully") 
+        logger.info("内存存储已成功关闭")

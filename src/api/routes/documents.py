@@ -191,21 +191,21 @@ async def process_markitdown(files: list[UploadFile] = File(...)):
 @router.post("/process-mineru", response_model=ProcessingResponse)
 async def process_mineru_document(request: ProcessingRequest) -> ProcessingResponse:
     """
-    Process MinerU-parsed document (Markdown + images).
+    处理 MinerU 解析的文档（Markdown + 图片）。
 
-    This endpoint handles:
-    1. Copying images from source to frontend public directory
-    2. Updating image path references in markdown
-    3. Splitting content into chunks
-    4. Optionally embedding documents to vector store
+    本端点处理：
+    1. 将图片从源目录复制到前端公共目录
+    2. 更新 Markdown 中的图片路径引用
+    3. 将内容分割成块
+    4. 可选：将文档嵌入向量存储
 
-    Args:
-        request: ProcessingRequest with source_path and optional embed flag
+    参数：
+        request：ProcessingRequest，包含源路径和可选的嵌入标志
 
-    Returns:
-        ProcessingResponse with processing results
+    返回：
+        ProcessingResponse，包含处理结果
 
-    Example:
+    示例：
         POST /documents/process-mineru
         {
             "source_path": "/path/to/mineru/output",
@@ -223,7 +223,7 @@ async def process_mineru_document(request: ProcessingRequest) -> ProcessingRespo
 
         return ProcessingResponse(
             status="success",
-            message="Document processed successfully",
+            message="文档处理成功",
             images_copied=result["images_copied"],
             chunks_created=result["chunks_created"],
             embedded=result["embedded"],

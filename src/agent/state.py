@@ -1,4 +1,4 @@
-"""Define the shared values."""
+"""定义共享值。"""
 
 from __future__ import annotations
 
@@ -12,13 +12,13 @@ from typing_extensions import Annotated
 
 @dataclass(kw_only=True)
 class State:
-    """Main graph state."""
+    """主图状态。"""
 
     messages: Annotated[list[AnyMessage], add_messages]
-    """The messages in the conversation."""
+    """对话中的消息。"""
     
     retrieved_documents: list[Document] | None = None
-    """Documents retrieved from the vector store for RAG."""
+    """从向量存储中检索的用于 RAG 的文档。"""
 
 
 __all__ = [

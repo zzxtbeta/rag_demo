@@ -1,4 +1,4 @@
-"""Project search tool - Query external project management API."""
+"""项目搜索工具 - 查询外部项目管理 API。"""
 
 from __future__ import annotations
 
@@ -11,14 +11,14 @@ from src.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
-# Tool configuration
+# 工具配置
 API_TIMEOUT = 10
 MAX_RETRIES = 1
 RESULT_LIMIT = 1
 
 
 class ProjectSearchClient:
-    """Client for project management API with token caching."""
+    """项目管理 API 客户端，带有令牡缓存。"""
 
     def __init__(self, api_url: str, username: str, password: str):
         self.api_url = api_url.rstrip("/")
@@ -27,7 +27,7 @@ class ProjectSearchClient:
         self.token: Optional[str] = None
 
     async def _get_token(self) -> str:
-        """Acquire or refresh authentication token."""
+        """获取或刷新认证令牡。"""
         if self.token:
             return self.token
 
@@ -53,14 +53,14 @@ class ProjectSearchClient:
 
     async def search(self, query: str, limit: int = RESULT_LIMIT) -> dict:
         """
-        Search projects by keyword.
+        按关键词搜索项目。
 
-        Args:
-            query: Search keyword
-            limit: Max results to return
+        参数：
+            query: 搜索关键词
+            limit: 返回的最大结果数
 
-        Returns:
-            API response dict with 'items' and 'total' keys
+        返回：
+            API 响应字典，包含 'items' 和 'total' 键
         """
         token = await self._get_token()
 
@@ -76,9 +76,9 @@ class ProjectSearchClient:
                 return response.json()
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 401:
-                # Token expired, clear and retry once
+                # 令牡已过期，清除并重试一次
                 self.token = None
-                logger.debug("[PROJECT_SEARCH] Token expired, refreshing...")
+                logger.debug("[PROJECT_SEARCH] 令牡已过期，正在刷新...")
                 token = await self._get_token()
                 async with httpx.AsyncClient() as client:
                     response = await client.get(
@@ -96,13 +96,13 @@ class ProjectSearchClient:
 
 
 def _format_project(project: dict) -> str:
-    """Return complete project data as formatted JSON string for LLM."""
+    """以格式化 JSON 字符串的形式返回完整的项目数据供 LLM 使用。"""
     import json
     return json.dumps(project, ensure_ascii=False, indent=2)
 
 
 async def _search_projects_impl(query: str) -> str:
-    """Internal implementation of project search."""
+    """项目搜索的内部实现。"""
     settings = get_settings()
 
     if not settings.project_search_enabled:
@@ -152,16 +152,16 @@ async def _search_projects_impl(query: str) -> str:
 @tool
 async def search_projects(query: str) -> str:
     """
-    Search project database by keyword.
+    按关键词搜索项目数据库。
 
-    Use this tool when user asks about specific companies or projects.
-    Examples: "象量科技的xxx", "融资信息", "团队背景"
+    当用户询问特定公司或项目时使用此工具。
+    示例："象量科技的xxx"、"融资信息"、"团队背景"
 
-    Args:
-        query: Search keyword (e.g., company name, project name)
+    参数：
+        query: 搜索关键词（例如，公司名称、项目名称）
 
-    Returns:
-        Formatted project information or error message
+    返回：
+        格式化的项目信息或错误消息
     """
     return await _search_projects_impl(query)
 

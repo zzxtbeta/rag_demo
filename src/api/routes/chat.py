@@ -1,4 +1,4 @@
-"""Chat-related API endpoints."""
+"""聊天相关的 API 端点。"""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 try:
     from langchain_core.messages import BaseMessage, message_to_dict  # type: ignore
-except Exception:  # pragma: no cover - defensive
+except Exception:  # pragma: no cover - 防御性处理
     BaseMessage = None  # type: ignore[assignment]
     message_to_dict = None  # type: ignore[assignment]
 
@@ -66,7 +66,7 @@ def build_trace_tree(trace_runs: list[TraceRun]) -> list[dict[str, Any]]:
         else:
             roots.append(r)
     
-    # DFS 构建树节点
+    # 深度优先搜索构建树节点
     def build_node(run: dict[str, Any]) -> dict[str, Any]:
         children = children_map.get(run["run_id"], [])
         node = {
@@ -177,7 +177,7 @@ async def _stream_workflow_to_redis(
                 message_chunk, metadata = chunk
                 node_name = metadata.get("langgraph_node", "unknown")
                 
-                # 只处理 LLM 节点的 token（query_or_respond 和 generate）
+                # 仅处理 LLM 节点的 token（query_or_respond 和 generate）
                 if node_name in ("query_or_respond", "generate"):
                     # 提取 token 内容
                     token_content = ""
@@ -194,7 +194,7 @@ async def _stream_workflow_to_redis(
                             elif isinstance(normalized_chunk.get("text"), str):
                                 token_content = normalized_chunk["text"]
                     
-                    # 只发送非空的 token
+                    # 仅发送非空的 token
                     if token_content:
                         await publisher.publish_node_output(
                             thread_id=thread_id,
@@ -215,7 +215,7 @@ async def _stream_workflow_to_redis(
                     node_times[node_name] = elapsed_ms
 
                     normalized = _normalize_update(update)
-                    # 只发布节点完成事件
+                    # 仅发布节点完成事件
                     await publisher.publish_node_output(
                         thread_id=thread_id,
                         node_name=node_name,
@@ -395,7 +395,7 @@ async def get_thread_history(
         for i, msg in enumerate(messages):
             # 判断消息类型
             msg_type = getattr(msg, "type", "unknown")
-            role = "assistant"  # default
+            role = "assistant"  # 默认值
             
             if msg_type == "human":
                 role = "user"
@@ -406,7 +406,7 @@ async def get_thread_history(
             elif msg_type == "tool":
                 role = "tool"
             else:
-                # Skip unknown types if necessary, or treat as assistant
+                # 必要时跳过未知类型，或视为助手
                 pass
 
             # 提取 tool_calls（兼容 additional_kwargs）
@@ -465,7 +465,7 @@ async def get_thread_history(
                 if isinstance(metadata, dict) and "timestamp" in metadata:
                     timestamp = metadata["timestamp"]
             
-            # Extract extra fields
+            # 提取额外字段
             name = getattr(msg, "name", None)
             tool_calls = getattr(msg, "tool_calls", [])
             tool_call_id = getattr(msg, "tool_call_id", None)
@@ -537,7 +537,7 @@ async def get_thread_history_with_trace(thread_id: str, graph=Depends(get_graph)
         if not state:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Thread not found: {thread_id}",
+                detail=f"线程未找到：{thread_id}",
             )
 
         messages = state.values.get("messages", [])
@@ -607,7 +607,7 @@ async def get_thread_history_with_trace(thread_id: str, graph=Depends(get_graph)
                 ):
                     runs.append(run)
                 
-                # 按 start_time 正序排序（早到晚）
+                # 按 start_time 升序排序（从早到晚）
                 runs.sort(key=lambda r: r.start_time if r.start_time else 0)
                 
                 # 转换为 TraceRun
@@ -633,9 +633,9 @@ async def get_thread_history_with_trace(thread_id: str, graph=Depends(get_graph)
                     )
                     trace_runs.append(trace_run)
                 
-                logger.info(f"Fetched {len(trace_runs)} trace runs from LangSmith for thread {thread_id}")
+                logger.info(f"从 LangSmith 获取了 {len(trace_runs)} 个 trace runs，线程 {thread_id}")
             except Exception as exc:
-                logger.warning(f"Failed to fetch LangSmith traces: {exc}")
+                logger.warning(f"获取 LangSmith traces 失败：{exc}")
                 # 不中断请求，继续返回消息历史
         
         # 构建 trace 树
@@ -717,7 +717,7 @@ async def delete_thread(thread_id: str):
     - 会删除该 thread_id 的所有 checkpoint 记录
     """
     try:
-        # 根据实际的 LangGraph checkpoint 表结构删除（4张表）：
+        # 根据实际的 LangGraph checkpoint 表结构删除（4 张表）：
         # - checkpoint_writes: 存储 checkpoint 写入数据（依赖 checkpoint_id）
         # - checkpoint_blobs: 存储 checkpoint 二进制数据
         # - checkpoints: 存储 checkpoint 元数据（主表）

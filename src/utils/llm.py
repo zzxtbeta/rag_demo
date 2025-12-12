@@ -11,13 +11,13 @@ def load_chat_model(
     temperature: float = 0.7,
     max_retries: int = 2,
 ) -> BaseChatModel:
-    """Load a chat model configured via Settings."""
+    """加载通过设置配置的聊天模型。"""
     settings = get_settings()
     model_name = fully_specified_name or settings.chat_model
     
     return ChatOpenAI(
         model=model_name,
-        api_key=settings.dascope_api_key,
+        api_key=settings.dashscope_api_key,
         base_url=settings.dascope_base_url,
         temperature=temperature,
         max_retries=max_retries,

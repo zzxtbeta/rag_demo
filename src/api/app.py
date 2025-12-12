@@ -1,4 +1,4 @@
-"""FastAPI application exposing the LangGraph workflow."""
+"""暴露 LangGraph 工作流的 FastAPI 应用。"""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from typing import AsyncIterator, Optional
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# Windows needs selector event loop for psycopg/asyncio compatibility
+# Windows 需要选择器事件循环以实现 psycopg/asyncio 兼容性
 if sys.platform == "win32":
     import asyncio
 
@@ -26,7 +26,7 @@ from api.routes.documents import router as documents_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Manage resources for the API lifecycle."""
+    """管理 API 生命周期的资源。"""
     await DatabaseManager.initialize()
     await CheckpointerManager.initialize()
 
@@ -41,10 +41,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
-    """Factory for FastAPI app."""
+    """为 FastAPI 应用程序的工厂。"""
     app = FastAPI(title="RAG Agent API", version="1.0.0", lifespan=lifespan)
 
-    # Enable CORS for frontend (e.g., Vite dev server on 5173)
+    # 为前端启用 CORS（例如，5173 上的 Vite 开发服务器）
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],

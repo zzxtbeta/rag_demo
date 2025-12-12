@@ -1,7 +1,7 @@
-"""Vector store utilities for RAG system.
+"""RAG 系统的向量存储工具。
 
-Primary workflow: Use MinerU processor (utils.mineru_processor) for document processing.
-Legacy functions below support PyPDFLoader for backward compatibility.
+主要工作流：使用 MinerU 处理器（utils.mineru_processor）进行文档处理。
+下面的遗留函数支持 PyPDFLoader 以实现向后兼容性。
 """
 
 from functools import lru_cache
@@ -9,40 +9,35 @@ from pathlib import Path
 from typing import Optional
 
 from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.embeddings import DashScopeEmbeddings
 from langchain_core.documents import Document
-from langchain_openai import OpenAIEmbeddings
 from langchain_postgres import PGVector
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from config.settings import get_settings
 
 
-def get_embeddings() -> OpenAIEmbeddings:
-    """Initialize OpenAI embeddings model."""
+def get_embeddings() -> DashScopeEmbeddings:
+    """初始化 DashScope Qwen 嵌入模型。"""
     settings = get_settings()
-    embeddings_config = {
-        "model": "text-embedding-3-large",
-        "openai_api_key": settings.openai_embeddings_api_key,
-    }
-    
-    if settings.litellm_base_url:
-        embeddings_config["openai_api_base"] = settings.litellm_base_url
-    
-    return OpenAIEmbeddings(**embeddings_config)
+    return DashScopeEmbeddings(
+        model=settings.embeddings_model,
+        dashscope_api_key=settings.dashscope_api_key,
+    )
 
 
 def initialize_vector_store(
     collection_name: str = "pdf_documents",
     connection_string: Optional[str] = None,
 ) -> PGVector:
-    """Initialize PGVector store with embeddings.
+    """使用嵌入初始化 PGVector 存储。
     
-    Args:
-        collection_name: Name of the collection in the vector store.
-        connection_string: PostgreSQL connection string. If None, reads from environment.
+    参数：
+        collection_name: 向量存储中集合的名称。
+        connection_string: PostgreSQL 连接字符串。如果为 None，从环境读取。
         
-    Returns:
-        PGVector: Initialized vector store.
+    返回：
+        PGVector: 初始化的向量存储。
     """
     settings = get_settings()
     if connection_string is None:
@@ -66,13 +61,13 @@ def initialize_vector_store(
 def get_vector_store(
     collection_name: str = "pdf_documents",
 ) -> PGVector:
-    """Return a cached PGVector instance for the given collection.
+    """返回给定集合的缓存 PGVector 实例。
     
-    Args:
-        collection_name: Name of the collection in the vector store.
+    参数：
+        collection_name: 向量存储中集合的名称。
         
-    Returns:
-        PGVector: Cached vector store instance.
+    返回：
+        PGVector: 缓存的向量存储实例。
     """
     settings = get_settings()
     if collection_name == "pdf_documents":
@@ -85,30 +80,30 @@ def load_and_split_pdfs(
     chunk_size: Optional[int] = None,
     chunk_overlap: Optional[int] = None,
 ) -> list[Document]:
-    """Load PDF files from directory and split into chunks.
+    """从目录加载 PDF 文件并分割成块。
     
-    DEPRECATED: Use MinerU processor instead (utils.mineru_processor.MineruProcessor).
+    已弃用：改用 MinerU 处理器（utils.mineru_processor.MineruProcessor）。
     
-    Args:
-        pdf_dir: Directory containing PDF files.
-        chunk_size: Maximum size of each chunk in characters.
-        chunk_overlap: Number of overlapping characters between chunks.
+    参数：
+        pdf_dir: 包含 PDF 文件的目录。
+        chunk_size: 每个块的最大大小（字符）。
+        chunk_overlap: 块之间的重叠字符数。
         
-    Returns:
-        List of Document objects containing chunked text.
+    返回：
+        包含分块文本的 Document 对象列表。
     """
     pdf_dir_path = Path(pdf_dir)
     
     if not pdf_dir_path.exists():
         raise ValueError(f"PDF directory does not exist: {pdf_dir}")
     
-    # Find all PDF files in the directory
+    # 在目录中查找所有 PDF 文件
     pdf_files = list(pdf_dir_path.glob("*.pdf"))
     
     if not pdf_files:
-        raise ValueError(f"No PDF files found in directory: {pdf_dir}")
+        raise ValueError(f"目录中未找到 PDF 文件：{pdf_dir}")
     
-    # Load all PDFs
+    # 加载所有 PDF
     all_docs = []
     for pdf_file in pdf_files:
         loader = PyPDFLoader(str(pdf_file))
@@ -145,34 +140,34 @@ def index_documents(
     chunk_size: Optional[int] = None,
     chunk_overlap: Optional[int] = None,
 ) -> PGVector:
-    """Load PDFs, split them, and index into vector store.
+    """加载 PDF、分割并索引到向量存储。
     
-    DEPRECATED: Use MinerU processor instead (utils.mineru_processor.MineruProcessor).
+    已弃用：改用 MinerU 处理器（utils.mineru_processor.MineruProcessor）。
     
-    Args:
-        pdf_dir: Directory containing PDF files.
-        collection_name: Name of the collection in the vector store.
-        chunk_size: Maximum size of each chunk in characters.
-        chunk_overlap: Number of overlapping characters between chunks.
+    参数：
+        pdf_dir: 包含 PDF 文件的目录。
+        collection_name: 向量存储中集合的名称。
+        chunk_size: 每个块的最大大小（字符）。
+        chunk_overlap: 块之间的重叠字符数。
         
-    Returns:
-        PGVector: Vector store with indexed documents.
+    返回：
+        PGVector: 包含索引文档的向量存储。
     """
-    # Load and split documents
+    # 加载和分割文档
     doc_splits = load_and_split_pdfs(
         pdf_dir=pdf_dir,
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
     )
     
-    # Initialize vector store
+    # 初始化向量存储
     settings = get_settings()
     if collection_name == "pdf_documents":
         collection_name = settings.default_collection
     
     vector_store = initialize_vector_store(collection_name=collection_name)
     
-    # Add documents to vector store
+    # 将文档添加到向量存储
     vector_store.add_documents(doc_splits)
     
     return vector_store
@@ -182,14 +177,14 @@ def get_retriever(
     collection_name: str = "pdf_documents",
     search_kwargs: Optional[dict] = None,
 ):
-    """Get a retriever from the vector store.
+    """从向量存储获取检索器。
     
-    Args:
-        collection_name: Name of the collection in the vector store.
-        search_kwargs: Additional search parameters (e.g., {"k": 4}).
+    参数：
+        collection_name: 向量存储中集合的名称。
+        search_kwargs: 额外的搜索参数（例如，{"k": 4}）。
         
-    Returns:
-        VectorStoreRetriever: Configured retriever.
+    返回：
+        VectorStoreRetriever: 配置好的检索器。
     """
     settings = get_settings()
     if search_kwargs is None:

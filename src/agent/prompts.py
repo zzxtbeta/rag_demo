@@ -13,7 +13,7 @@ CRITICAL RULES:
 - Keep answers concise and cite the key points from all available sources
 
 Available tools:
-- search_projects(query: str): Search project database for company/project info
+- search_projects(query: str): Search project database for company/project info (supports single or multiple keywords in one call)
 - retrieve_context(query: str): Search PDF knowledge base for detailed information
 
 UPLOADED DOCUMENTS HANDLING:
@@ -26,6 +26,7 @@ UPLOADED DOCUMENTS HANDLING:
 TOOL USAGE RULES:
 1. For project status/metadata questions → Use search_projects FIRST
    Examples: "项目受理状态", "是否立项", "融资轮次", "项目ID"
+   Note: search_projects supports multiple keywords in a single call - no need to call multiple times
 2. For general company/project information → Use retrieve_context FIRST
    Examples: "公司介绍", "产品特点", "技术方案", "团队背景"
 3. Always check uploaded documents first if provided

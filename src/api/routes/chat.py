@@ -344,24 +344,83 @@ async def chat_stream_endpoint(
     )
 
 
+def _filter_user_visible_messages(messages: list[BaseMessage], thread_id: str) -> list[HistoryMessage]:
+    """过滤并转换消息为用户可见的格式。
+    
+    只保留最终消息（用户输入和最终 LLM 输出），排除中间节点的输出。
+    
+    过滤规则：
+    - HumanMessage: 保留所有
+    - AIMessage: 只保留没有 tool_calls 的（最终回复）
+    - ToolMessage: 跳过（中间过程）
+    - SystemMessage: 跳过（系统内部）
+    """
+    from langchain_core.messages import HumanMessage, ToolMessage, SystemMessage
+    
+    history_messages: list[HistoryMessage] = []
+    
+    for i, msg in enumerate(messages):
+        # 跳过中间消息类型
+        if isinstance(msg, (ToolMessage, SystemMessage)):
+            continue
+        
+        # AI 消息：跳过带 tool_calls 的（中间决策过程）
+        if isinstance(msg, AIMessage):
+            if msg.tool_calls:
+                continue
+            # 跳过空内容的 AI 消息
+            if not msg.content:
+                continue
+        
+        # 提取基础字段
+        msg_type = getattr(msg, "type", "unknown")
+        role = "user" if isinstance(msg, HumanMessage) else "assistant"
+        content = extract_content(msg)
+        msg_id = getattr(msg, "id", None) or f"{thread_id}_{i}"
+        
+        # 提取时间戳
+        timestamp = None
+        if hasattr(msg, "timestamp"):
+            timestamp = msg.timestamp
+        elif hasattr(msg, "response_metadata"):
+            metadata = getattr(msg, "response_metadata", {})
+            if isinstance(metadata, dict):
+                timestamp = metadata.get("timestamp")
+        
+        history_messages.append(
+            HistoryMessage(
+                id=str(msg_id),
+                role=role,
+                content=str(content) if content else "",
+                timestamp=timestamp,
+                type=msg_type,
+                name=getattr(msg, "name", None),
+                tool_calls=getattr(msg, "tool_calls", []),
+                tool_call_id=getattr(msg, "tool_call_id", None),
+                artifact=getattr(msg, "artifact", None),
+            )
+        )
+    
+    return history_messages
+
+
 @router.get("/threads/{thread_id}/history", response_model=ThreadHistory)
 async def get_thread_history(
     thread_id: str,
     graph=Depends(get_graph),
 ):
-    """获取线程的完整对话历史（轻量级,不含 Trace）。
+    """获取线程的对话历史（轻量级，不含 Trace）。
 
     ✅ 用途：
     - 前端默认使用此接口加载历史对话
-    - 只返回用户和助手的消息,不包含工具调用和系统消息
-    - 性能优化,不查询 LangSmith Trace API
+    - 只返回用户输入和最终 LLM 输出，排除中间节点的处理过程
+    - 性能优化，不查询 LangSmith Trace API
     - 适用于对话恢复、历史浏览等场景
 
     ✅ 流程：
     1. 从 LangGraph Checkpoint 获取当前状态
-    2. 提取 messages 数组并过滤出 user/assistant 消息
-    3. 保留数据库中的原始时间戳(秒转毫秒)
-    4. 转换为 HistoryMessage 格式返回
+    2. 过滤消息：只保留用户消息和最终 AI 回复
+    3. 转换为 HistoryMessage 格式返回
 
     参数：
     - thread_id: 会话线程标识
@@ -370,119 +429,21 @@ async def get_thread_history(
     - ThreadHistory: 包含 thread_id、messages 列表、total_messages
 
     注意：
-    - 如果线程不存在,返回 404 错误
-    - messages 按时间顺序排列(从旧到新)
-    - 不包含 LangSmith Trace 信息,如需 Trace 请使用 history-with-trace 接口
+    - 如果线程不存在，返回 404 错误
+    - 自动过滤掉中间节点的输出（如 query_or_respond 的 tool_calls、tools 节点的输出）
     """
     try:
         config = {"configurable": {"thread_id": thread_id}}
-
-        # 获取当前状态（包含所有历史消息）
         state = await graph.aget_state(config)
+        
         if not state:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Thread not found: {thread_id}",
             )
 
-        # 从状态中提取消息
         messages = state.values.get("messages", [])
-
-        # 转换为 HistoryMessage 对象
-        # ✅ 关键过滤：只返回用户可见的最终消息
-        # 排除中间节点的输出（如 query_or_respond、tools 节点）
-        history_messages: list[HistoryMessage] = []
-        for i, msg in enumerate(messages):
-            # 判断消息类型
-            msg_type = getattr(msg, "type", "unknown")
-            role = "assistant"  # 默认值
-            
-            if msg_type == "human":
-                role = "user"
-            elif msg_type == "ai":
-                role = "assistant"
-            elif msg_type == "system":
-                role = "system"
-            elif msg_type == "tool":
-                role = "tool"
-            else:
-                # 必要时跳过未知类型，或视为助手
-                pass
-
-            # 提取 tool_calls（兼容 additional_kwargs）
-            tool_calls = getattr(msg, "tool_calls", None)
-            if not tool_calls:
-                additional_kwargs = getattr(msg, "additional_kwargs", {}) or {}
-                if isinstance(additional_kwargs, dict):
-                    tool_calls = additional_kwargs.get("tool_calls") or additional_kwargs.get(
-                        "function_call"
-                    )
-
-            # 提取内容（使用 extract_content，兼容 list/part 格式）
-            content_value = extract_content(msg)
-            content_str = (
-                content_value.strip()
-                if isinstance(content_value, str)
-                else str(content_value or "").strip()
-            )
-
-            # 提取 artifact
-            artifact = getattr(msg, "artifact", None)
-
-            # ✅ 过滤规则：只保留最终消息
-            # 1. 所有用户消息都保留
-            # 2. AI 消息：只保留没有 tool_calls 的（最终回复）
-            #    有 tool_calls 的是中间过程（query_or_respond 节点），不显示
-            # 3. AI 消息如果 content 为空且无 artifact，也视为中间消息（忽略）
-            # 4. Tool 消息不保留（中间过程）
-
-            if msg_type == "tool":
-                # 跳过 tool 消息（中间过程）
-                continue
-            
-            if msg_type == "ai":
-                # 如果有 tool_calls，说明这是 query_or_respond 节点的输出
-                # 这是中间过程，不应该在历史中显示
-                if tool_calls:
-                    continue
-
-                # 没有 tool_calls 但 content 为空（且无 artifact）也视为中间消息
-                if not content_str and artifact is None:
-                    continue
-
-            # 提取 ID
-            msg_id = getattr(msg, "id", None)
-            if not msg_id:
-                # Generate a stable ID based on index if missing
-                msg_id = f"{thread_id}_{i}"
-
-            # 提取时间戳（如果有）
-            timestamp = None
-            if hasattr(msg, "timestamp"):
-                timestamp = msg.timestamp
-            elif hasattr(msg, "response_metadata"):
-                metadata = getattr(msg, "response_metadata", {})
-                if isinstance(metadata, dict) and "timestamp" in metadata:
-                    timestamp = metadata["timestamp"]
-            
-            # 提取额外字段
-            name = getattr(msg, "name", None)
-            tool_calls = getattr(msg, "tool_calls", [])
-            tool_call_id = getattr(msg, "tool_call_id", None)
-            
-            history_messages.append(
-                HistoryMessage(
-                    id=str(msg_id),
-                    role=role,
-                    content=content_value if isinstance(content_value, str) else str(content_value),
-                    timestamp=timestamp,
-                    type=msg_type,
-                    name=name,
-                    tool_calls=tool_calls,
-                    tool_call_id=tool_call_id,
-                    artifact=artifact,
-                )
-            )
+        history_messages = _filter_user_visible_messages(messages, thread_id)
 
         return ThreadHistory(
             thread_id=thread_id,
@@ -541,51 +502,7 @@ async def get_thread_history_with_trace(thread_id: str, graph=Depends(get_graph)
             )
 
         messages = state.values.get("messages", [])
-
-        # 转换为 HistoryMessage
-        history_messages: list[HistoryMessage] = []
-        for i, msg in enumerate(messages):
-            msg_type = getattr(msg, "type", "unknown")
-            role = "assistant"
-            
-            if msg_type == "human":
-                role = "user"
-            elif msg_type == "ai":
-                role = "assistant"
-            elif msg_type == "system":
-                role = "system"
-            elif msg_type == "tool":
-                role = "tool"
-
-            content = getattr(msg, "content", "")
-            msg_id = getattr(msg, "id", None) or f"{thread_id}_{i}"
-            
-            timestamp = None
-            if hasattr(msg, "timestamp"):
-                timestamp = msg.timestamp
-            elif hasattr(msg, "response_metadata"):
-                metadata = getattr(msg, "response_metadata", {})
-                if isinstance(metadata, dict) and "timestamp" in metadata:
-                    timestamp = metadata["timestamp"]
-            
-            name = getattr(msg, "name", None)
-            tool_calls = getattr(msg, "tool_calls", [])
-            tool_call_id = getattr(msg, "tool_call_id", None)
-            artifact = getattr(msg, "artifact", None)
-
-            history_messages.append(
-                HistoryMessage(
-                    id=str(msg_id),
-                    role=role,
-                    content=str(content),
-                    timestamp=timestamp,
-                    type=msg_type,
-                    name=name,
-                    tool_calls=tool_calls,
-                    tool_call_id=tool_call_id,
-                    artifact=artifact,
-                )
-            )
+        history_messages = _filter_user_visible_messages(messages, thread_id)
 
         # 2. 从 LangSmith 获取 Trace Runs
         trace_runs: list[TraceRun] = []

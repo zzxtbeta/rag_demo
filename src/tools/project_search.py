@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 # 工具配置
 API_TIMEOUT = 10
 MAX_RETRIES = 1
-RESULT_LIMIT = 1
+RESULT_LIMIT = 5
 
 
 class ProjectSearchClient:
@@ -131,9 +131,13 @@ async def _search_projects_impl(query: str) -> str:
             logger.info(f"[PROJECT_SEARCH] No results found for: {query}")
             return f"未找到与 '{query}' 相关的项目"
 
-        # Format top result
-        formatted = f"找到 {result.get('total', 1)} 个相关项目：\n\n"
-        formatted += _format_project(projects[0])
+        # Format all results
+        formatted = f"找到 {result.get('total', len(projects))} 个相关项目：\n\n"
+        for i, project in enumerate(projects, 1):
+            formatted += f"【项目 {i}】\n"
+            formatted += _format_project(project)
+            if i < len(projects):
+                formatted += "\n\n---\n\n"
 
         logger.info(f"[PROJECT_SEARCH] Found {len(projects)} result(s)")
         return formatted
@@ -152,13 +156,13 @@ async def _search_projects_impl(query: str) -> str:
 @tool
 async def search_projects(query: str) -> str:
     """
-    按关键词搜索项目数据库。
+    按关键词搜索项目数据库。支持单个或多个搜索关键词。
 
-    当用户询问特定公司或项目时使用此工具。
-    示例："象量科技的xxx"、"融资信息"、"团队背景"
+    当用户询问特定公司或项目时使用此工具。无需多次调用，可在单次调用中传入多个关键词。
+    示例提问："象量科技的xxx"、"融资信息"、"团队背景"
 
     参数：
-        query: 搜索关键词（例如，公司名称、项目名称）
+        query: 搜索关键词，支持单个关键词或多个关键词（例如，公司名称、项目名称）
 
     返回：
         格式化的项目信息或错误消息

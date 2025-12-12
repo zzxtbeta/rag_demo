@@ -22,6 +22,7 @@ from agent import prompts
 from config.settings import get_settings
 from tools.retrieval import retrieve_context
 from tools.project_search import search_projects
+from tools.web_search import web_search
 from utils.llm import load_chat_model
 
 
@@ -77,27 +78,34 @@ def _extract_retrieved_context(messages: List) -> str:
 # ============================================================================
 
 async def query_or_respond(state: MessagesState, config: Optional[RunnableConfig] = None):
-    """使用检索工具调用 LLM 以决定是否需要文档/项目。
+    """使用检索工具调用 LLM 以决定是否需要文档/项目/网络搜索。
     
     参数：
         state: 包含用户问题的 MessagesState
         config: 可选的 LangGraph 配置，包含可配置参数
+            - chat_model: 使用的聊天模型
+            - enable_websearch: 是否启用网络搜索（默认 False）
         
     返回：
         dict: 更新后的状态，包含 AI 响应（如需检索则包含 tool_calls）
     """
-    # 从配置中提取 chat_model（如果提供）
+    # 从配置中提取参数
     chat_model = None
+    enable_websearch = False
     if config and hasattr(config, "configurable") and config.configurable:
         chat_model = config.configurable.get("chat_model")
+        enable_websearch = config.configurable.get("enable_websearch", False)
     elif config and isinstance(config, dict) and "configurable" in config:
         chat_model = config["configurable"].get("chat_model")
+        enable_websearch = config["configurable"].get("enable_websearch", False)
     
     # 根据配置构建工具列表
     tools = [retrieve_context]
     settings = get_settings()
     if settings.project_search_enabled:
         tools.append(search_projects)
+    if enable_websearch and settings.tavily_api_key:
+        tools.append(web_search)
     
     llm = _get_llm(chat_model)
     llm_with_tools = llm.bind_tools(tools)
@@ -147,6 +155,8 @@ _tools = [retrieve_context]
 _settings = get_settings()
 if _settings.project_search_enabled:
     _tools.append(search_projects)
+if _settings.tavily_api_key:
+    _tools.append(web_search)
 
 # 添加节点
 workflow.add_node("query_or_respond", query_or_respond)

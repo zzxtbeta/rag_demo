@@ -88,6 +88,8 @@ class Settings:
     project_search_enabled: bool
     # Project search database 配置（如果直接访问数据库而非 API）
     project_search_db_url: Optional[str]
+    # Web search 配置
+    tavily_api_key: Optional[str]
 
     @property
     def psycopg_connection(self) -> str:
@@ -139,6 +141,8 @@ def get_settings() -> Settings:
         project_search_enabled=os.getenv("PROJECT_SEARCH_ENABLED", "false").lower() == "true",
         # Project search database 配置
         project_search_db_url=os.getenv("PROJECT_SEARCH_DB_URL"),
+        # Web search 配置
+        tavily_api_key=os.getenv("TAVILY_API_KEY"),
     )
 
 

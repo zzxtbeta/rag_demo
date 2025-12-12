@@ -48,6 +48,8 @@ class ChatRequest(BaseModel):
 
     - chat_model: 聊天使用的模型名称（可选），如未指定则使用默认配置
 
+    - enable_websearch: 是否启用网络搜索（可选，默认 False）
+
     - documents: 用户上传的文档元数据（可选），包含 filename、format、markdown_content
     """
 
@@ -58,6 +60,9 @@ class ChatRequest(BaseModel):
     message: str = Field(..., description="User query content")
     chat_model: Optional[str] = Field(
         None, description="Optional chat model name (e.g., 'qwen-plus-latest', 'qwen-max-latest', 'qwen-flash')"
+    )
+    enable_websearch: bool = Field(
+        False, description="Enable web search using Tavily API (requires TAVILY_API_KEY)"
     )
     documents: Optional[list[DocumentMetadata]] = Field(
         None, description="Optional uploaded documents with metadata"

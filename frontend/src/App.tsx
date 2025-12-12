@@ -17,6 +17,8 @@ function App() {
     updateThreadTitle,
     chatModel,
     setChatModel,
+    enableWebsearch,
+    setEnableWebsearch,
   } = useChatStream("zzxt");
 
   const [sidebarVisible, setSidebarVisible] = useState(true);
@@ -51,6 +53,8 @@ function App() {
           isLoading={isStreaming}
           chatModel={chatModel}
           onChatModelChange={setChatModel}
+          enableWebsearch={enableWebsearch}
+          onEnableWebsearchChange={setEnableWebsearch}
         />
         {isStreaming && <div className="stream-indicator">Streaming...</div>}
       </div>

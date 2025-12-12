@@ -6,6 +6,7 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 const STORAGE_KEY_THREADS = "chat_threads";
 const STORAGE_KEY_ACTIVE_THREAD = "chat_active_thread";
 const STORAGE_KEY_CHAT_MODEL = "chat_model";
+const STORAGE_KEY_WEBSEARCH = "enable_websearch";
 
 // 生成消息存储的 key
 function getMessagesStorageKey(threadId: string): string {
@@ -48,6 +49,8 @@ interface UseChatStreamResult {
   updateThreadTitle: (threadId: string, title: string) => void;
   chatModel: string;
   setChatModel: (model: string) => void;
+  enableWebsearch: boolean;
+  setEnableWebsearch: (enabled: boolean) => void;
   traceStats: TraceStats | null;
 }
 
@@ -132,6 +135,10 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
   const [chatModel, setChatModelState] = useState<string>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_CHAT_MODEL);
     return saved || "qwen-plus-latest";
+  });
+  const [enableWebsearch, setEnableWebsearchState] = useState<boolean>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_WEBSEARCH);
+    return saved ? JSON.parse(saved) : false;
   });
   const [traceStats, setTraceStats] = useState<TraceStats | null>(null);
 
@@ -463,6 +470,11 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
     localStorage.setItem(STORAGE_KEY_CHAT_MODEL, model);
   }, []);
 
+  const setEnableWebsearch = useCallback((enabled: boolean) => {
+    setEnableWebsearchState(enabled);
+    localStorage.setItem(STORAGE_KEY_WEBSEARCH, JSON.stringify(enabled));
+  }, []);
+
   const updateThreadTitle = useCallback((threadId: string, title: string) => {
     setThreads((prev) => {
       const updated = prev.map((t) =>
@@ -569,6 +581,7 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
         user_id: userId,
         message: content,
         chat_model: chatModel,
+        enable_websearch: enableWebsearch,
       };
 
       // 如果有上传的文档，传递完整的文档元数据给后端
@@ -584,7 +597,7 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
         body: JSON.stringify(requestBody),
       });
     },
-    [ensureThread, attachWebSocket, userId, chatModel, generateTitleFromMessage],
+    [ensureThread, attachWebSocket, userId, chatModel, enableWebsearch, generateTitleFromMessage],
   );
 
   useEffect(() => {
@@ -609,6 +622,8 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
     updateThreadTitle,
     chatModel,
     setChatModel,
+    enableWebsearch,
+    setEnableWebsearch,
     traceStats,
   };
 }

@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { DocumentUpload } from './DocumentUpload'
+import { WebSearchToggle } from './WebSearchToggle'
 import { useDocumentUpload } from '../hooks/useDocumentUpload'
 
 export interface DocumentMetadata {
@@ -13,6 +14,8 @@ interface ChatInputWithUploadProps {
   isLoading?: boolean
   chatModel?: string
   onChatModelChange?: (model: string) => void
+  enableWebsearch?: boolean
+  onEnableWebsearchChange?: (enabled: boolean) => void
 }
 
 export function ChatInputWithUpload({
@@ -20,6 +23,8 @@ export function ChatInputWithUpload({
   isLoading = false,
   chatModel = 'qwen-plus-latest',
   onChatModelChange,
+  enableWebsearch = false,
+  onEnableWebsearchChange,
 }: ChatInputWithUploadProps) {
   const [message, setMessage] = useState('')
   const [dragOver, setDragOver] = useState(false)
@@ -157,6 +162,14 @@ export function ChatInputWithUpload({
                 <option value="gpt-4o">GPT-4o</option>
                 <option value="gpt-4-turbo">GPT-4 Turbo</option>
               </select>
+            )}
+
+            {onEnableWebsearchChange && (
+              <WebSearchToggle
+                enabled={enableWebsearch}
+                onChange={onEnableWebsearchChange}
+                disabled={isLoading || isUploading}
+              />
             )}
 
             <button

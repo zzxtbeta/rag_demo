@@ -31,7 +31,9 @@ dependencies = [
     "redis>=5.0.0",
     # Document conversion
     "markitdown[all]>=0.0.1",
-    "dashscope>=1.25.3"
+    "dashscope>=1.25.3",
+    # Web search
+    "langchain-tavily>=0.1.0"
 ]
 
 [project.optional-dependencies]

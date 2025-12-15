@@ -9,9 +9,8 @@ readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
 dependencies = [
-    "langgraph>=1.0.0,<1.1.0",
-    "langgraph-sdk>=0.2.2,<0.3.0",
-    "langgraph-checkpoint>=2.0.0,<3.0.0",
+    "langgraph>=1.0.0",
+    "langgraph-checkpoint-postgres>=2.0.23,<3.0.0",
     # LLM integrations
     "langchain>=1.0.0,<1.2.0",
     "langchain-core>=1.0.0,<1.2.0",
@@ -28,6 +27,7 @@ dependencies = [
     # API & streaming
     "fastapi>=0.115.0,<0.116.0",
     "uvicorn>=0.30.0,<0.31.0",
+    "python-multipart>=0.0.6",
     "redis>=5.0.0",
     # Document conversion
     "markitdown[all]>=0.0.1",

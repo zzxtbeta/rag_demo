@@ -346,7 +346,7 @@ async def chat_stream_endpoint(
     )
 
 
-def _filter_user_visible_messages(messages: list[BaseMessage], thread_id: str) -> list[HistoryMessage]:
+def _filter_user_visible_messages(messages: list[Any], thread_id: str) -> list[HistoryMessage]:
     """过滤并转换消息为用户可见的格式。
     
     只保留最终消息（用户输入和最终 LLM 输出），排除中间节点的输出。
@@ -362,6 +362,55 @@ def _filter_user_visible_messages(messages: list[BaseMessage], thread_id: str) -
     history_messages: list[HistoryMessage] = []
     
     for i, msg in enumerate(messages):
+        # Checkpointer 可能返回 BaseMessage，也可能返回 dict（JSON 序列化后的消息）
+        if isinstance(msg, dict):
+            msg_role = msg.get("role")
+            msg_type = msg.get("type")
+
+            # 跳过中间消息类型
+            if msg_role in {"tool", "system"} or msg_type in {"tool", "system"}:
+                continue
+
+            # AI 消息：跳过带 tool_calls 的（中间决策过程）
+            is_ai = msg_role in {"assistant", "ai"} or msg_type == "ai"
+            tool_calls = (
+                msg.get("tool_calls")
+                or (isinstance(msg.get("additional_kwargs"), dict) and msg["additional_kwargs"].get("tool_calls"))
+            )
+            if is_ai and tool_calls:
+                continue
+
+            # 跳过空内容的 AI 消息
+            content = extract_content(msg)
+            if is_ai and not content:
+                continue
+
+            # 统一 role
+            role = "user" if msg_role in {"user", "human"} or msg_type == "human" else "assistant"
+
+            msg_id = msg.get("id") or f"{thread_id}_{i}"
+
+            timestamp = msg.get("timestamp")
+            if timestamp is None:
+                response_metadata = msg.get("response_metadata")
+                if isinstance(response_metadata, dict):
+                    timestamp = response_metadata.get("timestamp")
+
+            history_messages.append(
+                HistoryMessage(
+                    id=str(msg_id),
+                    role=role,
+                    content=str(content) if content else "",
+                    timestamp=timestamp,
+                    type=str(msg_type or msg_role or "unknown"),
+                    name=msg.get("name"),
+                    tool_calls=msg.get("tool_calls", []),
+                    tool_call_id=msg.get("tool_call_id"),
+                    artifact=msg.get("artifact"),
+                )
+            )
+            continue
+
         # 跳过中间消息类型
         if isinstance(msg, (ToolMessage, SystemMessage)):
             continue

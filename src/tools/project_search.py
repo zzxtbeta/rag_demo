@@ -7,7 +7,7 @@ from typing import Optional
 import httpx
 from langchain.tools import tool
 
-from src.config.settings import get_settings
+from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 

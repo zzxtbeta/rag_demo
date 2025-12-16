@@ -332,79 +332,31 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
             if (token) {
               setMessages((prev) => {
                 const lastMsg = prev[prev.length - 1];
-                
-                // ✅ 关键修复:判断是否需要创建新的 assistant 消息
-                // 如果当前节点是 generate(最终答案),需要:
-                // 1. 移除当前轮次中 query_or_respond 创建的临时 assistant 消息
-                // 2. 创建新的 assistant 消息用于显示最终答案
-                if (nodeName === "generate") {
-                  // 找到最后一个 user 消息的索引
-                  let lastUserIdx = -1;
-                  for (let i = prev.length - 1; i >= 0; i--) {
-                    if (prev[i].role === "user") {
-                      lastUserIdx = i;
-                      break;
-                    }
-                  }
-                  
-                  // 只移除最后一个 user 消息之后的、没有 nodeName 的 assistant 消息
-                  const filteredMessages = prev.filter((msg, idx) => {
-                    // 保留所有非 assistant 消息
-                    if (msg.role !== "assistant") return true;
-                    // 保留最后一个 user 消息之前的所有消息
-                    if (idx <= lastUserIdx) return true;
-                    // 保留已经有 nodeName='generate' 的 assistant 消息
-                    if (msg.nodeName === "generate") return true;
-                    // 移除当前轮次中没有 nodeName 的 assistant 消息(来自 query_or_respond)
-                    return false;
-                  });
-                  
-                  // 检查最后一条消息是否是当前 generate 节点的 assistant 消息
-                  const lastFiltered = filteredMessages[filteredMessages.length - 1];
-                  if (lastFiltered?.role === "assistant" && lastFiltered.nodeName === "generate") {
-                    // 追加 token 到现有的 generate 消息
-                    return filteredMessages.map((msg, idx) =>
-                      idx === filteredMessages.length - 1
-                        ? { ...msg, content: msg.content + token }
-                        : msg,
-                    );
-                  } else {
-                    // 创建新的 generate 消息，使用后端返回的 ID（如果有）
-                    return [
-                      ...filteredMessages,
-                      {
-                        id: data.id || data.message_id || `${Date.now()}_ai_${Math.random().toString(36).slice(2)}`,
-                        threadId: threadIdFromData,
-                        role: "assistant" as const,
-                        content: token,
-                        timestamp: Date.now(),
-                        nodeName: "generate",
-                      },
-                    ];
-                  }
-                }
-                
-                // 非 generate 节点:正常处理 token 累积
-                // 流式追加 token：如果最后一条是 assistant 消息,追加 token
-                if (lastMsg?.role === "assistant") {
+
+                // 将 token 流式输出绑定到对应节点，便于后续在“工具决策阶段”回滚草稿内容。
+                // 当前 graph 结构（Scheme A）没有 generate 节点；最终答案来自最后一次 query_or_respond。
+
+                // 流式追加 token：只有当最后一条 assistant 与当前节点一致时才拼接
+                if (lastMsg?.role === "assistant" && lastMsg.nodeName === nodeName) {
                   return prev.map((msg, idx) =>
                     idx === prev.length - 1
                       ? { ...msg, content: msg.content + token }
                       : msg,
                   );
-                } else {
-                  // 否则创建新的 assistant 消息，使用后端返回的 ID（如果有）
-                  return [
-                    ...prev,
-                    {
-                      id: data.id || data.message_id || `${Date.now()}_ai_${Math.random().toString(36).slice(2)}`,
-                      threadId: threadIdFromData,
-                      role: "assistant" as const,
-                      content: token,
-                      timestamp: Date.now(),
-                    },
-                  ];
                 }
+
+                // 否则创建新的 assistant 消息
+                return [
+                  ...prev,
+                  {
+                    id: data.id || data.message_id || `${Date.now()}_ai_${Math.random().toString(36).slice(2)}`,
+                    threadId: threadIdFromData,
+                    role: "assistant" as const,
+                    content: token,
+                    timestamp: Date.now(),
+                    nodeName: nodeName || undefined,
+                  },
+                ];
               });
             }
             return;
@@ -428,6 +380,95 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
           // 处理节点完成事件（只显示 output）
           // 忽略 start 事件和 workflow 节点
           if (nodeName && nodeName !== "workflow" && messageType === "output") {
+            // query_or_respond 节点可能会先输出“需要调用工具”的草稿，再在下一次 query_or_respond 输出最终答案。
+            // 为避免 Turn 结构按索引拿到“第一条 assistant（草稿）”，这里基于 tool_calls 判定是否回滚草稿。
+            if (nodeName === "query_or_respond") {
+              try {
+                const firstMsg = rawData?.messages?.[0];
+                const toolCalls =
+                  firstMsg?.data?.tool_calls ||
+                  firstMsg?.tool_calls ||
+                  firstMsg?.data?.additional_kwargs?.tool_calls ||
+                  [];
+                const hasToolCalls = Array.isArray(toolCalls) && toolCalls.length > 0;
+
+                // 找到最后一个 user 消息位置（当前 turn 的起点）
+                setMessages((prev) => {
+                  let lastUserIdx = -1;
+                  for (let i = prev.length - 1; i >= 0; i--) {
+                    if (prev[i].role === "user") {
+                      lastUserIdx = i;
+                      break;
+                    }
+                  }
+
+                  // 仅处理当前轮次（最后一个 user 之后）的 assistant 消息
+                  const currentTurnAssistantIdxs: number[] = [];
+                  for (let i = lastUserIdx + 1; i < prev.length; i++) {
+                    if (prev[i].role === "assistant") {
+                      currentTurnAssistantIdxs.push(i);
+                    }
+                  }
+
+                  if (hasToolCalls) {
+                    // 这次 query_or_respond 是“决定调用工具”的中间输出：删除该轮次的草稿 assistant
+                    return prev.filter((msg, idx) => {
+                      if (idx <= lastUserIdx) return true;
+                      if (msg.role !== "assistant") return true;
+                      // 删除属于 query_or_respond token 流的草稿
+                      return msg.nodeName !== "query_or_respond";
+                    });
+                  }
+
+                  // 没有 tool_calls：这是最终回答。
+                  // 确保该轮次只保留一个 assistant（如果有多个，保留最后一个；如果没有 token，直接用 output 内容补齐）。
+                  const finalContent =
+                    firstMsg?.data?.content ||
+                    firstMsg?.content ||
+                    "";
+
+                  if (currentTurnAssistantIdxs.length === 0) {
+                    if (!finalContent) return prev;
+                    return [
+                      ...prev,
+                      {
+                        id: firstMsg?.data?.id || firstMsg?.id || `${Date.now()}_ai_${Math.random().toString(36).slice(2)}`,
+                        threadId: threadIdFromData,
+                        role: "assistant" as const,
+                        content: finalContent,
+                        timestamp: Date.now(),
+                        nodeName: "query_or_respond",
+                      },
+                    ];
+                  }
+
+                  const lastAssistantIdx = currentTurnAssistantIdxs[currentTurnAssistantIdxs.length - 1];
+                  const filtered = prev.filter((msg, idx) => {
+                    if (idx <= lastUserIdx) return true;
+                    if (msg.role !== "assistant") return true;
+                    return idx === lastAssistantIdx;
+                  });
+
+                  // 如果最后一条 assistant 是 token 拼出来的，但 output 有更完整 content，可用 output 覆盖（避免丢字）
+                  if (finalContent) {
+                    return filtered.map((m, idx) => {
+                      if (idx !== filtered.length - 1) return m;
+                      if (m.role !== "assistant") return m;
+                      // 只有当 output 明显更长时才覆盖，避免闪烁
+                      if ((finalContent as string).length > (m.content || "").length) {
+                        return { ...m, content: finalContent };
+                      }
+                      return m;
+                    });
+                  }
+
+                  return filtered;
+                });
+              } catch {
+                // ignore parse errors
+              }
+            }
+
             const nodeMsg: ChatMessage = {
               id: `${Date.now()}_node_${Math.random().toString(36).slice(2)}`,
               threadId: threadIdFromData,

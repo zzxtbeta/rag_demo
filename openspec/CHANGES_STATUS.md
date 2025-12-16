@@ -1,6 +1,6 @@
 # OpenSpec Changes Status Summary
 
-**Last Updated**: 2025-12-11
+**Last Updated**: 2025-12-16
 
 ---
 
@@ -80,6 +80,20 @@
 - **Description**: Initial Redis streaming pipeline implementation
 - **Note**: This change was superseded by the more comprehensive "refactor-redis-pubsub-to-stream" which provides Stream persistence instead of just Pub/Sub
 - **Action**: **ARCHIVE** - Move to `archive/` directory as it's been superseded
+
+---
+
+### 7. **refactor-agent-react-loop-and-streaming-ui**
+- **Status**: ✅ Completed
+- **Description**: Align agent graph with Quickstart ReAct loop; harden async tool execution/error handling; fix history + streaming UI consistency; clean unused agent code.
+- **Key Features**:
+  - ✅ Scheme A ReAct loop: `query_or_respond` ↔ `tools` until no `tool_calls`
+  - ✅ ToolNode async wrapper (`awrap_tool_call`) + ToolMessage error fallback
+  - ✅ ASGI-safe web_search (`asyncio.to_thread` around Tavily sync invoke)
+  - ✅ History API robust to dict/BaseMessage and filters intermediate tool-call messages
+  - ✅ Frontend streaming: rollback tool-call draft assistant, keep only final assistant
+  - ✅ Agent directory cleanup + best-practice doc update
+- **Files**: `src/agent/graph.py`, `src/tools/toolkit.py`, `src/tools/web_search.py`, `src/api/routes/chat.py`, `frontend/src/hooks/useChatStream.ts`, `docs/LANGGRAPH_REACT_LOOP_AND_TOOLS_BEST_PRACTICES.md`
 
 ---
 

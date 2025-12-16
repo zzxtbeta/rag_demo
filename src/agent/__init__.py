@@ -1,8 +1,3 @@
-"""Agent package.
+from agent.graph import graph
 
-图入口在 `agent.graph` 中，请按需显式导入：
-
-    from agent.graph import graph, build_graph
-"""
-
-__all__ = []
+__all__ = ["graph"]

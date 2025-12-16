@@ -1,5 +1,6 @@
 """Web search tool using Tavily API for real-time information retrieval."""
 
+import asyncio
 from typing import Optional
 
 from langchain.tools import tool
@@ -26,7 +27,7 @@ def _get_tavily_search_tool() -> Optional[TavilySearchResults]:
 
 
 @tool(response_format="content_and_artifact")
-def web_search(query: str) -> tuple[str, list]:
+async def web_search(query: str) -> tuple[str, list]:
     """Search the web for real-time information using Tavily.
     
     Use this tool when you need current information not available in the knowledge base,
@@ -49,7 +50,9 @@ def web_search(query: str) -> tuple[str, list]:
         )
     
     try:
-        results = tavily_tool.invoke({"query": query})
+        # TavilySearchResults.invoke is synchronous and may block the event loop.
+        # Run it in a worker thread to keep ASGI responsive.
+        results = await asyncio.to_thread(tavily_tool.invoke, {"query": query})
         
         if isinstance(results, str):
             return results, []

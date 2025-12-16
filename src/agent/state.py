@@ -1,26 +1,23 @@
-"""定义共享值。"""
+"""定义共享状态类型。
+
+说明：
+LangGraph Quickstart 的 Full code example 使用 `TypedDict` 定义 State，
+并通过 `Annotated[..., operator.add]` 指定 reducer，保证 messages 追加而非覆盖。
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import operator
 
-from langchain_core.documents import Document
 from langchain_core.messages import AnyMessage
-from langgraph.graph import add_messages
-from typing_extensions import Annotated
+from typing_extensions import Annotated, TypedDict
 
 
-@dataclass(kw_only=True)
-class State:
-    """主图状态。"""
+class State(TypedDict, total=False):
+    """主图状态（最小集合）。"""
 
-    messages: Annotated[list[AnyMessage], add_messages]
-    """对话中的消息。"""
-    
-    retrieved_documents: list[Document] | None = None
-    """从向量存储中检索的用于 RAG 的文档。"""
+    messages: Annotated[list[AnyMessage], operator.add]
+    llm_calls: int
 
 
-__all__ = [
-    "State",
-]
+__all__ = ["State"]

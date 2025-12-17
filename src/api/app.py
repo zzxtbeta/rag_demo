@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     """为 FastAPI 应用程序的工厂。"""
-    app = FastAPI(title="RAG Agent API", version="1.0.0", lifespan=lifespan)
+    app = FastAPI(title="RAG Agent API", version="1.0.0", lifespan=lifespan, root_path="/agent")
 
     # 为前端启用 CORS（例如，5173 上的 Vite 开发服务器）
     app.add_middleware(

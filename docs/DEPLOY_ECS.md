@@ -140,7 +140,7 @@ POSTGRES_CONNECTION_STRING=postgresql://postgres:<POSTGRES_PASSWORD>@host.docker
 
 # === Redis (Recommended) ===
 # 复用本机 cybernaut_redis 映射端口 6379
-REDIS_URL=redis://host.docker.internal:6379/0
+REDIS_URL=redis://host.docker.internal:6379/2
 
 # === LLM + Embeddings (Required) ===
 DASHSCOPE_API_KEY=<YOUR_DASHSCOPE_API_KEY>

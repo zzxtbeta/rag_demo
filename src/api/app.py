@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     """为 FastAPI 应用程序的工厂。"""
-    app = FastAPI(title="RAG Agent API", version="1.0.0", lifespan=lifespan, root_path="/agent")
+    app = FastAPI(title="RAG Agent API", version="1.0.0", lifespan=lifespan)
 
     # 为前端启用 CORS（例如，5173 上的 Vite 开发服务器）
     app.add_middleware(
@@ -59,7 +59,14 @@ def create_app() -> FastAPI:
     return app
 
 
-app = create_app()
+_agent_app = create_app()
+
+# NOTE:
+# `root_path` 仅用于反向代理场景（例如由网关把 /agent 前缀剥离后转发到本服务）。
+# 如果你希望本服务自身就以 /agent 前缀对外暴露路由（包括 /agent/docs），
+# 需要使用 mount。
+app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+app.mount("/agent", _agent_app)
 
 __all__ = ["app", "create_app"]
 

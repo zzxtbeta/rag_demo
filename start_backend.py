@@ -47,7 +47,7 @@ def main():
     # 启动 FastAPI
     print(f"{Colors.GREEN}Starting FastAPI backend...{Colors.RESET}\n")
 
-    config = uvicorn.Config("api.app:app", host="0.0.0.0", port=8000)
+    config = uvicorn.Config("api.app:app", host="0.0.0.0", port=8000, root_path="/agent")
     server = uvicorn.Server(config)
 
     try:

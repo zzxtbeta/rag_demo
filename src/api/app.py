@@ -61,11 +61,17 @@ def create_app() -> FastAPI:
 
 _agent_app = create_app()
 
+
+@asynccontextmanager
+async def _outer_lifespan(app: FastAPI) -> AsyncIterator[None]:
+    async with _agent_app.router.lifespan_context(_agent_app):
+        yield
+
 # NOTE:
 # `root_path` 仅用于反向代理场景（例如由网关把 /agent 前缀剥离后转发到本服务）。
 # 如果你希望本服务自身就以 /agent 前缀对外暴露路由（包括 /agent/docs），
 # 需要使用 mount。
-app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=_outer_lifespan)
 app.mount("/agent", _agent_app)
 
 __all__ = ["app", "create_app"]

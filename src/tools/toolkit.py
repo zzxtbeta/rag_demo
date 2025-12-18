@@ -17,8 +17,9 @@ from langchain_core.messages import ToolMessage
 from langgraph.prebuilt import ToolNode
 
 from config.settings import get_settings
+from tools.my_projects import list_my_projects
 from tools.project_search import search_projects
-from tools.retrieval import retrieve_context
+# from tools.retrieval import retrieve_context
 from tools.web_search import web_search
 
 
@@ -26,8 +27,10 @@ def get_model_tools(*, enable_websearch: bool) -> List:
     """Tools bound to the model for a single request."""
     settings = get_settings()
 
-    tools: list = [retrieve_context]
+    tools: list = []
+    # tools: list = [retrieve_context]
     if settings.project_search_enabled:
+        tools.append(list_my_projects)
         tools.append(search_projects)
     if enable_websearch and settings.tavily_api_key:
         tools.append(web_search)
@@ -44,8 +47,10 @@ def get_tool_node_tools() -> List:
     """
     settings = get_settings()
 
-    tools: list = [retrieve_context]
+    tools: list = []
+    # tools: list = [retrieve_context]  # 临时禁用
     if settings.project_search_enabled:
+        tools.append(list_my_projects)
         tools.append(search_projects)
     if settings.tavily_api_key:
         tools.append(web_search)

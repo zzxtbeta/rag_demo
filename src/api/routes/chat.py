@@ -24,6 +24,7 @@ from api.utils import extract_content
 from langchain_core.messages import AIMessage, BaseMessage
 from config.settings import get_settings
 from infra.redis_pubsub import RedisPublisher, StreamMessage
+from infra.request_context import get_access_token, set_access_token
 from utils.langsmith_client import get_langsmith_client
 
 logger = logging.getLogger(__name__)
@@ -128,6 +129,7 @@ async def _stream_workflow_to_redis(
     config: dict[str, Any],
     thread_id: str,
     publisher: RedisPublisher,
+    access_token: str | None = None,
 ) -> None:
     """后台执行工作流并将节点更新发布到 Redis。
 
@@ -161,6 +163,8 @@ async def _stream_workflow_to_redis(
     """
     start_time = time.perf_counter()
     node_times: dict[str, float] = {}
+
+    set_access_token(access_token)
 
     settings = get_settings()
     timeout_seconds = settings.workflow_timeout_seconds
@@ -336,6 +340,7 @@ async def chat_stream_endpoint(
         config=config,
         thread_id=req.thread_id,
         publisher=publisher,
+        access_token=get_access_token(),
     )
 
     return StreamStartResponse(

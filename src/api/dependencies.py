@@ -8,6 +8,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from config.settings import get_settings
 
 from infra.redis_pubsub import RedisPublisher
+from infra.request_context import set_access_token
 
 try:
     import jwt
@@ -129,6 +130,7 @@ def get_redis_publisher() -> RedisPublisher:
 def require_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
 ) -> dict:
+    set_access_token(credentials.credentials if credentials else None)
     return get_current_user(credentials)
 
 

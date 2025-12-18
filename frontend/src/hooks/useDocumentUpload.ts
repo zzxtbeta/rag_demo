@@ -1,6 +1,17 @@
 import { useState, useCallback } from 'react'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "https://www.gravaity-cybernaut.top/agent"
+const STORAGE_KEY_ACCESS_TOKEN = "access_token";
+
+function getAuthHeaders(): HeadersInit {
+  const token = localStorage.getItem(STORAGE_KEY_ACCESS_TOKEN);
+  if (token) {
+    return {
+      Authorization: `Bearer ${token}`,
+    };
+  }
+  return {};
+}
 
 export interface UploadedDocument {
   id: string
@@ -36,8 +47,19 @@ export function useDocumentUpload() {
     try {
       const response = await fetch(`${API_BASE}/documents/process-markitdown`, {
         method: 'POST',
+        headers: {
+          ...getAuthHeaders(),
+        },
         body: formData,
       })
+
+      if (response.status === 401) {
+        throw new Error('Unauthorized: 请先登录或重新登录后再上传')
+      }
+
+      if (!response.ok) {
+        throw new Error(`上传失败: ${response.status} ${response.statusText}`)
+      }
 
       if (!response.body) {
         throw new Error('无响应体')

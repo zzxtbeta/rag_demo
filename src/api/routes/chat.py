@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
-from api.dependencies import get_graph, get_redis_publisher
+from api.dependencies import get_graph, get_redis_publisher, require_user
 from db.checkpointer import CheckpointerManager
 from api.schemas import (
     ChatRequest,
@@ -310,6 +310,7 @@ async def chat_stream_endpoint(
     background_tasks: BackgroundTasks,
     graph=Depends(get_graph),
     publisher: RedisPublisher = Depends(get_redis_publisher),
+    _user: dict[str, Any] = Depends(require_user),
 ):
     """启动流式聊天工作流并发布节点更新到 Redis。
 

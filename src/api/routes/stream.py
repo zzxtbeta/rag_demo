@@ -11,6 +11,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from redis.asyncio import Redis
 
 from config.settings import get_settings
+from api.dependencies import verify_jwt_token
 from infra.redis_pubsub import get_redis_client
 
 logger = logging.getLogger(__name__)
@@ -128,9 +129,24 @@ async def websocket_stream(
     - 重连时通过 ?last_id={id} 参数传递
     - 如果 Stream 不可用，自动降级到 Pub/Sub
     """
+    settings = get_settings()
+    if settings.auth_enabled:
+        token = websocket.query_params.get("token")
+        if not token:
+            auth = websocket.headers.get("authorization")
+            if auth and auth.lower().startswith("bearer "):
+                token = auth.split(" ", 1)[1].strip()
+        if not token:
+            await websocket.close(code=1008, reason="Missing token")
+            return
+        try:
+            verify_jwt_token(token)
+        except Exception:
+            await websocket.close(code=1008, reason="Invalid token")
+            return
+
     await websocket.accept()
     redis: Redis = get_redis_client()
-    settings = get_settings()
 
     try:
         if settings.redis_stream_enabled:

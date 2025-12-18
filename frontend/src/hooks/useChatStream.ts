@@ -7,6 +7,17 @@ const STORAGE_KEY_THREADS = "chat_threads";
 const STORAGE_KEY_ACTIVE_THREAD = "chat_active_thread";
 const STORAGE_KEY_CHAT_MODEL = "chat_model";
 const STORAGE_KEY_WEBSEARCH = "enable_websearch";
+const STORAGE_KEY_ACCESS_TOKEN = "access_token";
+
+function getAuthHeaders(): HeadersInit {
+  const token = localStorage.getItem(STORAGE_KEY_ACCESS_TOKEN);
+  if (token) {
+    return {
+      "Authorization": `Bearer ${token}`,
+    };
+  }
+  return {};
+}
 
 // 生成消息存储的 key
 function getMessagesStorageKey(threadId: string): string {
@@ -205,7 +216,9 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
   const loadThreadHistory = useCallback(async (threadId: string) => {
     // 添加 Loading 占位消息
     try {
-      const response = await fetch(`${API_BASE}/chat/threads/${encodeURIComponent(threadId)}/history`);
+      const response = await fetch(`${API_BASE}/chat/threads/${encodeURIComponent(threadId)}/history`, {
+        headers: getAuthHeaders(),
+      });
       if (!response.ok) {
         if (response.status === 404) {
           setMessages([]);
@@ -289,9 +302,19 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
       
       // 从 localStorage 恢复 last_id（用于 Redis Stream 续订）
       const lastId = loadLastIdFromStorage(threadId);
-      const wsUrl = lastId 
-        ? API_BASE.replace(/^http/, "ws") + `/ws/${encodeURIComponent(threadId)}?last_id=${encodeURIComponent(lastId)}`
-        : API_BASE.replace(/^http/, "ws") + `/ws/${encodeURIComponent(threadId)}`;
+      const token = localStorage.getItem(STORAGE_KEY_ACCESS_TOKEN);
+      
+      let wsUrl = API_BASE.replace(/^http/, "ws") + `/ws/${encodeURIComponent(threadId)}`;
+      const params = new URLSearchParams();
+      if (lastId) {
+        params.append("last_id", lastId);
+      }
+      if (token) {
+        params.append("token", token);
+      }
+      if (params.toString()) {
+        wsUrl += `?${params.toString()}`;
+      }
       
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
@@ -534,6 +557,7 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
           `${API_BASE}/chat/threads/${encodeURIComponent(threadId)}`,
           {
             method: "DELETE",
+            headers: getAuthHeaders(),
           },
         );
         if (!response.ok) {
@@ -634,6 +658,7 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...getAuthHeaders(),
         },
         body: JSON.stringify(requestBody),
       });

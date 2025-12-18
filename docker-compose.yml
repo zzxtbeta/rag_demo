@@ -48,7 +48,7 @@ services:
     environment:
       REDIS_URL: ${REDIS_URL:-redis://langgraph-redis:6379}
       POSTGRES_CONNECTION_STRING: ${POSTGRES_CONNECTION_STRING:-postgresql://postgres:postgres@langgraph-postgres:5432/postgres?sslmode=disable}
-      LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY}
+      LANGSMITH_API_KEY: ${LANGSMITH_API_KEY}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/agent/docs"]
       interval: 10s

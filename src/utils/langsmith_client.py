@@ -16,11 +16,11 @@ def get_langsmith_client() -> Optional[Client]:
     """
     创建 LangSmith 客户端实例。
     
-    如果未配置 LANGCHAIN_API_KEY，返回 None。
+    如果未配置 LANGSMITH_API_KEY，返回 None。
     """
     settings = get_settings()
     if not settings.langsmith_api_key:
-        logger.warning("LANGCHAIN_API_KEY not configured. LangSmith tracing disabled.")
+        logger.warning("LANGSMITH_API_KEY not configured. LangSmith tracing disabled.")
         return None
     
     return Client(

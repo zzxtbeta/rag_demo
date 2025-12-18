@@ -2,9 +2,71 @@
 
 from __future__ import annotations
 
-from fastapi import HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+from config.settings import get_settings
 
 from infra.redis_pubsub import RedisPublisher
+
+try:
+    import jwt
+except Exception:  # pragma: no cover
+    jwt = None  # type: ignore[assignment]
+
+
+_bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def verify_jwt_token(token: str) -> dict:
+    settings = get_settings()
+    if not settings.auth_enabled:
+        return {"sub": "anonymous"}
+
+    if jwt is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="JWT library is not available",
+        )
+
+    if not settings.jwt_secret:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="JWT_SECRET is not configured",
+        )
+
+    try:
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+            options={"require": ["exp", "sub"]},
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+        )
+
+    sub = payload.get("sub")
+    if not sub:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+        )
+
+    return payload
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None,
+) -> dict:
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing bearer token",
+        )
+    return verify_jwt_token(credentials.credentials)
 
 
 def get_graph(request: Request):
@@ -64,5 +126,17 @@ def get_redis_publisher() -> RedisPublisher:
         ) from exc
 
 
-__all__ = ["get_graph", "get_redis_publisher"]
+def require_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+) -> dict:
+    return get_current_user(credentials)
+
+
+__all__ = [
+    "get_graph",
+    "get_redis_publisher",
+    "get_current_user",
+    "require_user",
+    "verify_jwt_token",
+]
 

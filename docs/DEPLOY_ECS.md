@@ -10,6 +10,88 @@ description: Deploy Gravaity API on Alibaba Cloud ECS (reuse existing Postgres/R
 
 ---
 
+## 最短路径（只看这一段就够）
+
+1) 准备代码 + `.env`
+
+```bash
+mkdir -p ~/workspace && cd ~/workspace
+git clone <你的仓库地址> gravaity
+cd gravaity
+nano .env
+```
+
+2) `.env` 至少要有（示例）
+
+```env
+GRAVAITY_API_PORT=8123
+POSTGRES_CONNECTION_STRING=postgresql://postgres:<POSTGRES_PASSWORD>@host.docker.internal:5432/<DB_NAME>?sslmode=disable
+REDIS_URL=redis://host.docker.internal:6379/2
+DASHSCOPE_API_KEY=<YOUR_DASHSCOPE_API_KEY>
+```
+
+3) 构建并启动（改了依赖/代码一定要加 `--build`）
+
+```bash
+docker compose up -d --build
+docker compose ps
+docker compose logs -f gravaity-api
+```
+
+4) 配置 Nginx（生产强烈建议）
+
+- **HTTP**：把 `https://<域名>/agent/*` 转发到 `http://127.0.0.1:8123/agent/*`
+- **WebSocket**：把 `https://<域名>/agent/ws/*` 转发并保留 Upgrade 头
+
+示例（关键点：`proxy_pass` 不要以 `/` 结尾，避免把 `/agent` 前缀剥掉）：
+
+```nginx
+location /agent/ws/ {
+  proxy_http_version 1.1;
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection "upgrade";
+  proxy_set_header Host $host;
+  proxy_pass http://127.0.0.1:8123;
+}
+
+location /agent/ {
+  proxy_set_header Host $host;
+  proxy_set_header X-Real-IP $remote_addr;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+  proxy_pass http://127.0.0.1:8123;
+}
+```
+
+5) 最快验证
+
+```bash
+curl -i http://127.0.0.1:8123/agent/docs
+```
+
+---
+
+## 必踩坑检查表（按这个排查最快）
+
+1) **改了代码/依赖但没生效**
+- 必须 `docker compose up -d --build`（只 restart 不会更新镜像）
+
+2) **Nginx 配了但 `/agent/docs` 还是 404**
+- `proxy_pass` 不要带尾部 `/`，否则会把 `/agent` 前缀剥离
+
+3) **Nginx reload 成功但 WS 还是 404**
+- 必须单独配置 `/agent/ws/` location，并加 Upgrade/Connection/HTTP1.1
+
+4) **WS 请求打到 upstream 但 upstream 返回 404**
+- 容器里 uvicorn 缺 WebSocket 依赖会出现：`No supported WebSocket library detected`
+- 解决：依赖需要 `uvicorn[standard]`（或至少安装 `websockets/wsproto`）并重新 build
+
+5) **nginx -t OK，但 reload 报重复 server/加载了两个 default**
+- 检查 `/etc/nginx/sites-enabled/` 是否残留 `*.bak` 或重复配置文件
+
+
+---
+
 ## 0. 前置条件
 
 - ECS 系统：Ubuntu / Debian / CentOS 均可（示例命令以 Ubuntu 为主）
@@ -108,7 +190,7 @@ nano .env
 ### 4.3 可选环境变量
 
 - LangSmith tracing（可选）：
-  - `LANGCHAIN_API_KEY`
+  - `LANGSMITH_API_KEY`
   - `LANGSMITH_PROJECT`
   - `LANGSMITH_TRACING`
   - `LANGSMITH_ENDPOINT`
@@ -155,7 +237,7 @@ VECTOR_COLLECTION=bp_pdf
 LANGSMITH_TRACING=true
 LANGSMITH_ENDPOINT=https://api.smith.langchain.com
 LANGSMITH_PROJECT=gravaity
-LANGCHAIN_API_KEY=<YOUR_LANGSMITH_API_KEY>
+LANGSMITH_API_KEY=<YOUR_LANGSMITH_API_KEY>
 
 # === Streaming switches (Optional) ===
 REDIS_STREAM_ENABLED=false
@@ -209,7 +291,7 @@ docker compose logs -f gravaity-api
 ### 6.1 容器内健康检查
 
 `docker compose.yml` 里 healthcheck 会请求：
-- `http://localhost:8000/docs`（容器内）
+- `http://localhost:8000/agent/docs`（容器内）
 
 你也可以手动：
 
@@ -222,14 +304,14 @@ docker compose ps
 ### 6.2 从 ECS 宿主机访问
 
 ```bash
-curl -f http://127.0.0.1:${GRAVAITY_API_PORT:-8123}/docs
+curl -f http://127.0.0.1:${GRAVAITY_API_PORT:-8123}/agent/docs
 ```
 
 ### 6.3 从公网访问
 
 确保 ECS 安全组放行 `GRAVAITY_API_PORT`（比如 8123/TCP）。然后访问：
 
-- `http://<你的ECS公网IP>:8123/docs`
+- `http://<你的ECS公网IP>:8123/agent/docs`
 
 ---
 

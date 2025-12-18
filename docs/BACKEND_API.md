@@ -12,7 +12,7 @@
 
 ## 1. 基本信息
 
-- Base URL：由部署决定（例如 `http://localhost:8000`）
+- Base URL：由部署决定（例如本地 `http://localhost:8000/agent`，线上 `https://www.gravaity-cybernaut.top/agent`）
 - CORS：当前允许任意来源（开发友好）
 - 鉴权：当前接口未实现鉴权（如需鉴权建议在网关层补充）
 - 线程标识：`thread_id` 是所有对话/流式/历史的主键
@@ -31,10 +31,10 @@ sequenceDiagram
   participant RS as Redis Stream
   participant WS as WebSocket(/ws/{thread_id})
 
-  FE->>API: POST /chat/stream (thread_id, message, ...)
+  FE->>API: POST /agent/chat/stream (thread_id, message, ...)
   API-->>FE: 200 StreamStartResponse (status=streaming)
 
-  FE->>WS: connect ws://host/ws/{thread_id}
+  FE->>WS: connect ws://host/agent/ws/{thread_id}
 
   Note over WS,RS: Stream 模式启用时：先推历史 XRANGE，再推新消息 XREAD
   WS->>RS: XRANGE workflow:execution:{thread_id}
@@ -76,7 +76,7 @@ flowchart TD
 ### 3.1 启动一次流式对话
 
 - Method：POST
-- Path：`/chat/stream`
+- Path：`/agent/chat/stream`
 - Content-Type：`application/json`
 
 请求体：ChatRequest
@@ -104,7 +104,7 @@ flowchart TD
 
 ### 4.1 连接 WebSocket
 
-- Path：`/ws/{thread_id}`
+- Path：`/agent/ws/{thread_id}`
 - Query：`last_id`（可选）
 
 两种使用模式
@@ -164,7 +164,7 @@ message_type 约定
 ### 5.1 获取用户可见历史（推荐）
 
 - Method：GET
-- Path：`/chat/threads/{thread_id}/history`
+- Path：`/agent/chat/threads/{thread_id}/history`
 
 响应体：ThreadHistory
 - `thread_id`（string）
@@ -192,7 +192,7 @@ HistoryMessage（前端常用字段）
 ### 5.2 获取历史 + Trace（调试用）
 
 - Method：GET
-- Path：`/chat/threads/{thread_id}/history-with-trace`
+- Path：`/agent/chat/threads/{thread_id}/history-with-trace`
 
 额外字段
 - `trace_runs`：扁平列表（按 start_time 正序）
@@ -210,7 +210,7 @@ HistoryMessage（前端常用字段）
 ### 5.3 删除线程（清空 checkpoint）
 
 - Method：DELETE
-- Path：`/chat/threads/{thread_id}`
+- Path：`/agent/chat/threads/{thread_id}`
 
 响应
 - 成功：204 No Content
@@ -225,7 +225,7 @@ HistoryMessage（前端常用字段）
 ### 6.1 MarkItDown：上传并转换为 Markdown（流式返回）
 
 - Method：POST
-- Path：`/documents/process-markitdown`
+- Path：`/agent/documents/process-markitdown`
 - Content-Type：`multipart/form-data`
 - Form 字段：`files`（可重复，最多 2 个文件）
 
@@ -250,8 +250,8 @@ HistoryMessage（前端常用字段）
 
 前端如果需要“带文档提问”，推荐流程是：
 1) UI 里把文件拖拽/选择进来
-2) 调用 `POST /documents/process-markitdown` 把文件转成 Markdown
-3) 等转换完成后，把转换结果作为 `documents` 一起传给 `POST /chat/stream` 再开始提问
+2) 调用 `POST /agent/documents/process-markitdown` 把文件转成 Markdown
+3) 等转换完成后，把转换结果作为 `documents` 一起传给 `POST /agent/chat/stream` 再开始提问
 
 ```mermaid
 flowchart TD
@@ -262,9 +262,9 @@ flowchart TD
   filename/format/markdown_content]
   R -->|error| E[提示失败
   允许重试/移除文件]
-  D --> Q[POST /chat/stream
+  D --> Q[POST /agent/chat/stream
   message + documents]
-  Q --> S[WS /ws/{thread_id}
+  Q --> S[WS /agent/ws/{thread_id}
   渲染 token/output]
 ```
 

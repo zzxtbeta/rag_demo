@@ -47,7 +47,7 @@ def get_langsmith_client() -> Optional[Client]:
     """创建 LangSmith 客户端实例"""
     settings = get_settings()
     if not settings.langsmith_api_key:
-        logger.warning("LANGCHAIN_API_KEY not configured.")
+        logger.warning("LANGSMITH_API_KEY not configured.")
         return None
     return Client(
         api_key=settings.langsmith_api_key,

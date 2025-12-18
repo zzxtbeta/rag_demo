@@ -259,7 +259,7 @@ Project: gravaity
 LANGSMITH_PROJECT=gravaity
 LANGSMITH_TRACING=true
 LANGSMITH_ENDPOINT=https://api.smith.langchain.com
-LANGCHAIN_API_KEY=your-api-key
+LANGSMITH_API_KEY=your-api-key
 ```
 
 ### 端到端测试

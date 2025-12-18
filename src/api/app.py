@@ -7,7 +7,7 @@ import sys
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Optional
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 
 # Windows 需要选择器事件循环以实现 psycopg/asyncio 兼容性
@@ -17,11 +17,13 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from agent.graph import build_graph
+from api.dependencies import require_user, verify_jwt_token
 from db.checkpointer import CheckpointerManager
 from db.database import DatabaseManager
 from api.routes.chat import router as chat_router
 from api.routes.stream import router as stream_router
 from api.routes.documents import router as documents_router
+from config.settings import get_settings
 
 
 @asynccontextmanager
@@ -44,6 +46,22 @@ def create_app() -> FastAPI:
     """为 FastAPI 应用程序的工厂。"""
     app = FastAPI(title="RAG Agent API", version="1.0.0", lifespan=lifespan)
 
+    @app.middleware("http")
+    async def _protect_docs(request: Request, call_next):
+        settings = get_settings()
+        if settings.auth_enabled:
+            path = request.url.path
+            if path == "/openapi.json" or path.startswith("/docs") or path.startswith("/redoc"):
+                auth = request.headers.get("authorization")
+                if not auth or not auth.lower().startswith("bearer "):
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Missing bearer token",
+                    )
+                token = auth.split(" ", 1)[1].strip()
+                verify_jwt_token(token)
+        return await call_next(request)
+
     # 为前端启用 CORS（例如，5173 上的 Vite 开发服务器）
     app.add_middleware(
         CORSMiddleware,
@@ -53,9 +71,23 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    app.include_router(chat_router, prefix="/chat", tags=["chat"])
-    app.include_router(stream_router, tags=["stream"])
-    app.include_router(documents_router, prefix="/documents", tags=["documents"])
+    app.include_router(
+        chat_router,
+        prefix="/chat",
+        tags=["chat"],
+        dependencies=[Depends(require_user)],
+    )
+    app.include_router(
+        stream_router,
+        tags=["stream"],
+        dependencies=[Depends(require_user)],
+    )
+    app.include_router(
+        documents_router,
+        prefix="/documents",
+        tags=["documents"],
+        dependencies=[Depends(require_user)],
+    )
     return app
 
 

@@ -91,6 +91,10 @@ class Settings:
     # Web search 配置
     tavily_api_key: Optional[str]
 
+    auth_enabled: bool
+    jwt_secret: Optional[str]
+    jwt_algorithm: str
+
     @property
     def psycopg_connection(self) -> str:
         """将连接字符串强制为 psycopg3 驱动程序 URI。"""
@@ -128,7 +132,7 @@ def get_settings() -> Settings:
         stream_max_length=_coerce_int("STREAM_MAX_LENGTH", 1000),
         workflow_timeout_seconds=_coerce_int("WORKFLOW_TIMEOUT_SECONDS", 300),
         # LangSmith 配置
-        langsmith_api_key=os.getenv("LANGCHAIN_API_KEY"),
+        langsmith_api_key=os.getenv("LANGSMITH_API_KEY"),
         langsmith_endpoint=os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com"),
         langsmith_project=os.getenv("LANGSMITH_PROJECT", "default"),
         # Document processing 配置
@@ -143,6 +147,10 @@ def get_settings() -> Settings:
         project_search_db_url=os.getenv("PROJECT_SEARCH_DB_URL"),
         # Web search 配置
         tavily_api_key=os.getenv("TAVILY_API_KEY"),
+
+        auth_enabled=os.getenv("AUTH_ENABLED", "true").lower() == "true",
+        jwt_secret=os.getenv("JWT_SECRET"),
+        jwt_algorithm=os.getenv("JWT_ALGORITHM", "HS256"),
     )
 
 

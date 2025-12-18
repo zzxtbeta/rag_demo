@@ -7,7 +7,7 @@ import logging
 import time
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 
 from api.dependencies import get_graph, get_redis_publisher, require_user
 from db.checkpointer import CheckpointerManager
@@ -306,6 +306,7 @@ async def _stream_workflow_to_redis(
 
 @router.post("/stream", response_model=StreamStartResponse)
 async def chat_stream_endpoint(
+    request: Request,
     req: ChatRequest,
     background_tasks: BackgroundTasks,
     graph=Depends(get_graph),
@@ -369,6 +370,12 @@ async def chat_stream_endpoint(
         "messages": [{"role": "user", "content": message_content}]
     }
 
+    access_token = get_access_token()
+    if not access_token:
+        auth_header = request.headers.get("authorization")
+        if isinstance(auth_header, str) and auth_header.lower().startswith("bearer "):
+            access_token = auth_header.split(" ", 1)[1].strip() or None
+
     background_tasks.add_task(
         _stream_workflow_to_redis,
         graph=graph,
@@ -376,7 +383,7 @@ async def chat_stream_endpoint(
         config=config,
         thread_id=req.thread_id,
         publisher=publisher,
-        access_token=get_access_token(),
+        access_token=access_token,
     )
 
     return StreamStartResponse(

@@ -168,22 +168,14 @@ async def list_my_projects(status: Optional[str] = None) -> str:
     try:
         user_token = get_access_token()
 
-        if user_token:
-            payload = await _list_my_projects_with_token(
-                api_url=settings.project_search_api_url,
-                token=user_token,
-                status=status,
-            )
-        else:
-            if not settings.project_search_api_username or not settings.project_search_api_password:
-                return "项目服务认证信息未配置"
+        if not user_token:
+            return "请先登录（缺少访问令牌）"
 
-            client = MyProjectsClient(
-                api_url=settings.project_search_api_url,
-                username=settings.project_search_api_username,
-                password=settings.project_search_api_password,
-            )
-            payload = await client.list_my_projects(status=status)
+        payload = await _list_my_projects_with_token(
+            api_url=settings.project_search_api_url,
+            token=user_token,
+            status=status,
+        )
 
         projects = _as_project_list(payload)
 

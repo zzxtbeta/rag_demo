@@ -16,8 +16,7 @@ Additionally, the current `retrieve_context` tool implies a vector-embedding wor
   - Calls: `GET https://www.gravaity-cybernaut.top/api/projects/my`
   - Optional query param: `status` (when omitted, fetch all statuses)
     - Allowed values: `received`, `accepted`, `initiated`, `invested`, `tracking`, `archived`, `rejected`
-  - Auth: prefer the current end-user bearer token from the incoming Agent request (request-scoped, not exposed to the LLM)
-    - Fallback: if the end-user token is unavailable, reuse the existing `PROJECT_SEARCH_*` service credentials
+  - Auth: requires the current end-user bearer token from the incoming Agent request (request-scoped, not exposed to the LLM)
   - Returns a concise, structured summary for LLM (grouped or list with key fields)
   - Response parsing: supports common response shapes including `{ "projects": [...] }` and `{ "items": [...] }`
 

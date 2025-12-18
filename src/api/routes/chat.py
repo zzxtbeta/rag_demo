@@ -164,6 +164,11 @@ async def _stream_workflow_to_redis(
     start_time = time.perf_counter()
     node_times: dict[str, float] = {}
 
+    token_buffers: dict[str, list[str]] = {}
+    token_last_flush: dict[str, float] = {}
+    token_flush_interval_s = 0.05
+    token_flush_max_chars = 256
+
     set_access_token(access_token)
 
     settings = get_settings()
@@ -200,21 +205,39 @@ async def _stream_workflow_to_redis(
                     
                     # 仅发送非空的 token
                     if token_content:
-                        await publisher.publish_node_output(
-                            thread_id=thread_id,
-                            node_name=node_name,
-                            data={
-                                "token": token_content,
-                                "chunk": _normalize_update(message_chunk),
-                                "metadata": _normalize_update(metadata),
-                            },
-                            status="streaming",
-                            message_type="token",
-                        )
+                        buf = token_buffers.setdefault(node_name, [])
+                        buf.append(token_content)
+
+                        now = time.perf_counter()
+                        last = token_last_flush.get(node_name, start_time)
+                        approx_len = sum(len(x) for x in buf)
+                        if (now - last) >= token_flush_interval_s or approx_len >= token_flush_max_chars:
+                            token_last_flush[node_name] = now
+                            merged = "".join(buf)
+                            buf.clear()
+                            await publisher.publish_node_output(
+                                thread_id=thread_id,
+                                node_name=node_name,
+                                data={"token": merged},
+                                status="streaming",
+                                message_type="token",
+                            )
                 
             elif stream_mode == "updates":
                 # updates 模式：节点完成事件（移除 start 事件）
                 for node_name, update in chunk.items():
+                    buf = token_buffers.get(node_name)
+                    if buf:
+                        merged = "".join(buf)
+                        buf.clear()
+                        await publisher.publish_node_output(
+                            thread_id=thread_id,
+                            node_name=node_name,
+                            data={"token": merged},
+                            status="streaming",
+                            message_type="token",
+                        )
+
                     elapsed_ms = (time.perf_counter() - start_time) * 1000
                     node_times[node_name] = elapsed_ms
 
@@ -244,6 +267,18 @@ async def _stream_workflow_to_redis(
 
     try:
         await asyncio.wait_for(_process_stream(), timeout=timeout_seconds)
+
+        for node_name, buf in token_buffers.items():
+            if buf:
+                merged = "".join(buf)
+                buf.clear()
+                await publisher.publish_node_output(
+                    thread_id=thread_id,
+                    node_name=node_name,
+                    data={"token": merged},
+                    status="streaming",
+                    message_type="token",
+                )
 
         total_ms = (time.perf_counter() - start_time) * 1000
         await publisher.publish_workflow_complete(

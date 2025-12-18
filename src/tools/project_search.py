@@ -3,96 +3,17 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 import httpx
 from langchain.tools import tool
 
 from config.settings import get_settings
+from infra.request_context import get_access_token
 
 logger = logging.getLogger(__name__)
 
 # 工具配置
 API_TIMEOUT = 10
-MAX_RETRIES = 1
 RESULT_LIMIT = 5
-
-
-class ProjectSearchClient:
-    """项目管理 API 客户端，带有令牡缓存。"""
-
-    def __init__(self, api_url: str, username: str, password: str):
-        self.api_url = api_url.rstrip("/")
-        self.username = username
-        self.password = password
-        self.token: Optional[str] = None
-
-    async def _get_token(self) -> str:
-        """获取或刷新认证令牡。"""
-        if self.token:
-            return self.token
-
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self.api_url}/api/auth/token",
-                    data={
-                        "grant_type": "password",
-                        "username": self.username,
-                        "password": self.password,
-                    },
-                    timeout=API_TIMEOUT,
-                )
-                response.raise_for_status()
-                data = response.json()
-                self.token = data["access_token"]
-                logger.debug("[PROJECT_SEARCH] Token acquired successfully")
-                return self.token
-        except Exception as e:
-            logger.error(f"[PROJECT_SEARCH] Token acquisition failed: {str(e)}")
-            raise
-
-    async def search(self, query: str, limit: int = RESULT_LIMIT) -> dict:
-        """
-        按关键词搜索项目。
-
-        参数：
-            query: 搜索关键词
-            limit: 返回的最大结果数
-
-        返回：
-            API 响应字典，包含 'items' 和 'total' 键
-        """
-        token = await self._get_token()
-
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{self.api_url}/api/projects/search",
-                    params={"query": query, "limit": limit, "offset": 0},
-                    headers={"Authorization": f"Bearer {token}"},
-                    timeout=API_TIMEOUT,
-                )
-                response.raise_for_status()
-                return response.json()
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 401:
-                # 令牡已过期，清除并重试一次
-                self.token = None
-                logger.debug("[PROJECT_SEARCH] 令牡已过期，正在刷新...")
-                token = await self._get_token()
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(
-                        f"{self.api_url}/api/projects/search",
-                        params={"query": query, "limit": limit, "offset": 0},
-                        headers={"Authorization": f"Bearer {token}"},
-                        timeout=API_TIMEOUT,
-                    )
-                    response.raise_for_status()
-                    return response.json()
-            raise
-        except Exception as e:
-            logger.error(f"[PROJECT_SEARCH] API call failed: {str(e)}")
-            raise
 
 
 def _format_project(project: dict) -> str:
@@ -112,19 +33,21 @@ async def _search_projects_impl(query: str) -> str:
         logger.warning("[PROJECT_SEARCH] API URL not configured")
         return "项目搜索服务未配置"
 
-    if not settings.project_search_api_username or not settings.project_search_api_password:
-        logger.warning("[PROJECT_SEARCH] API credentials not configured")
-        return "项目搜索服务认证信息未配置"
+    user_token = get_access_token()
+    if not user_token:
+        return "请先登录（缺少访问令牌）"
 
     try:
-        client = ProjectSearchClient(
-            api_url=settings.project_search_api_url,
-            username=settings.project_search_api_username,
-            password=settings.project_search_api_password,
-        )
-
         logger.info(f"[PROJECT_SEARCH] Searching for: {query}")
-        result = await client.search(query, limit=RESULT_LIMIT)
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{settings.project_search_api_url.rstrip('/')}/api/projects/search",
+                params={"query": query, "limit": RESULT_LIMIT, "offset": 0},
+                headers={"Authorization": f"Bearer {user_token}"},
+                timeout=API_TIMEOUT,
+            )
+            response.raise_for_status()
+            result = response.json()
 
         projects = result.get("items", [])
         if not projects:
@@ -170,4 +93,4 @@ async def search_projects(query: str) -> str:
     return await _search_projects_impl(query)
 
 
-__all__ = ["search_projects", "ProjectSearchClient"]
+__all__ = ["search_projects"]

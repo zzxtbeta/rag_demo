@@ -172,24 +172,21 @@ class RedisPublisher:
                 fields["execution_time_ms"] = str(message.execution_time_ms)
 
             # 添加到 Stream
-            message_id = await self._client.xadd(stream_key, fields)
-
-            # ✅ 关键修复：将 message_id 保存到字段中
-            # 这样前端和后端可以使用相同的 ID 系统
-            # 后续查询历史时，可以从 Stream 中读取原始的 message_id
-            await self._client.hset(
-                f"stream_message_ids:{message.thread_id}",
-                message_id,
-                message_id
+            message_id = await self._client.xadd(
+                stream_key,
+                fields,
+                maxlen=self._stream_max_length,
+                approximate=True,
             )
 
-            # 自动清理：限制 Stream 长度
-            await self._client.xtrim(
-                stream_key, maxlen=self._stream_max_length, approximate=True
-            )
+            if message.message_type != "token":
+                await self._client.hset(
+                    f"stream_message_ids:{message.thread_id}",
+                    message_id,
+                    message_id,
+                )
 
-            # 设置过期时间
-            await self._client.expire(stream_key, self._stream_ttl)
+                await self._client.expire(stream_key, self._stream_ttl)
 
             logger.debug(f"Published to stream {stream_key}: {message_id}")
             return message_id

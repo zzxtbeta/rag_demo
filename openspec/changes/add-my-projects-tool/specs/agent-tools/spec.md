@@ -8,6 +8,10 @@ The system SHALL provide a tool that lists the current user’s projects via the
 - **THEN** the tool uses that bearer token to call `GET /api/projects/my`
 - **AND** the tool does not expose the bearer token to the model
 
+#### Scenario: Missing token
+- **WHEN** the end-user calls the Agent API without an access token
+- **THEN** the tool returns an error indicating login is required
+
 #### Scenario: Streaming authorization propagation
 - **WHEN** the agent workflow is executed in a background task (streaming endpoint)
 - **THEN** the end-user bearer token is propagated into that background execution context

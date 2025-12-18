@@ -3,6 +3,15 @@ import { ChatMessage, ThreadSummary, TraceStats } from "../types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "https://www.gravaity-cybernaut.top/agent";
 
+function resolveWsBase(apiBase: string): string {
+  if (apiBase.startsWith("http://") || apiBase.startsWith("https://")) {
+    return apiBase.replace(/^http/, "ws");
+  }
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const basePath = apiBase.startsWith("/") ? apiBase : `/${apiBase}`;
+  return `${protocol}//${window.location.host}${basePath}`;
+}
+
 const STORAGE_KEY_THREADS = "chat_threads";
 const STORAGE_KEY_ACTIVE_THREAD = "chat_active_thread";
 const STORAGE_KEY_CHAT_MODEL = "chat_model";
@@ -304,7 +313,7 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
       const lastId = loadLastIdFromStorage(threadId);
       const token = localStorage.getItem(STORAGE_KEY_ACCESS_TOKEN);
       
-      let wsUrl = API_BASE.replace(/^http/, "ws") + `/ws/${encodeURIComponent(threadId)}`;
+      let wsUrl = resolveWsBase(API_BASE) + `/ws/${encodeURIComponent(threadId)}`;
       const params = new URLSearchParams();
       if (lastId) {
         params.append("last_id", lastId);

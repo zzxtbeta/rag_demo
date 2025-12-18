@@ -80,7 +80,6 @@ def create_app() -> FastAPI:
     app.include_router(
         stream_router,
         tags=["stream"],
-        dependencies=[Depends(require_user)],
     )
     app.include_router(
         documents_router,

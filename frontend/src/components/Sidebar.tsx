@@ -1,6 +1,7 @@
 import type { FC } from "react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { ThreadSummary } from "../types";
+import { LoginModal } from "./LoginModal";
 
 interface SidebarProps {
   threads: ThreadSummary[];
@@ -26,6 +27,29 @@ const Sidebar: FC<SidebarProps> = ({
   const [menuOpenThreadId, setMenuOpenThreadId] = useState<string | null>(null);
   const [copiedThreadId, setCopiedThreadId] = useState<string | null>(null);
   const [showCopyToast, setShowCopyToast] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [loggedInUser, setLoggedInUser] = useState<string | null>(null);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem("access_token");
+    const username = localStorage.getItem("username");
+    if (token && username) {
+      setLoggedInUser(username);
+    }
+  }, []);
+
+  const handleLoginSuccess = (username: string, token: string) => {
+    setLoggedInUser(username);
+    localStorage.setItem("username", username);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("username");
+    setLoggedInUser(null);
+    setShowUserMenu(false);
+  };
 
   const formatTime = (timestamp: number) => {
     const now = Date.now();
@@ -305,17 +329,41 @@ const Sidebar: FC<SidebarProps> = ({
       <div className="sidebar-footer">
         <div className="sidebar-user">
           <div className="sidebar-user-avatar">
-            {userId.charAt(0).toUpperCase()}
+            {loggedInUser ? loggedInUser.charAt(0).toUpperCase() : userId.charAt(0).toUpperCase()}
           </div>
           <div className="sidebar-user-info">
-            <div className="sidebar-user-name">{userId}</div>
-            <div className="sidebar-user-email">yrgu.example@gmail.com</div>
+            <div className="sidebar-user-name">{loggedInUser || userId}</div>
+            <div className="sidebar-user-email">
+              {loggedInUser ? "Logged in" : "Not logged in"}
+            </div>
           </div>
-          <button className="sidebar-user-menu" aria-label="User menu">
+          <button 
+            className="sidebar-user-menu" 
+            aria-label="User menu"
+            onClick={() => {
+              if (loggedInUser) {
+                setShowUserMenu(!showUserMenu);
+              } else {
+                setIsLoginModalOpen(true);
+              }
+            }}
+          >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
               <path d="M8 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 1a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 5a2 2 0 1 0 0 4 2 2 0 0 0 0-4z" />
             </svg>
           </button>
+          {showUserMenu && loggedInUser && (
+            <div className="sidebar-user-dropdown">
+              <button className="sidebar-user-dropdown-item" onClick={handleLogout}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+                Logout
+              </button>
+            </div>
+          )}
         </div>
         </div>
         {showCopyToast && (
@@ -326,6 +374,11 @@ const Sidebar: FC<SidebarProps> = ({
             已复制到剪贴板
           </div>
         )}
+        <LoginModal 
+          isOpen={isLoginModalOpen}
+          onClose={() => setIsLoginModalOpen(false)}
+          onLoginSuccess={handleLoginSuccess}
+        />
       </aside>
     );
   };

@@ -354,6 +354,8 @@ async def chat_stream_endpoint(
         config["configurable"]["chat_model"] = req.chat_model
     if req.enable_websearch:
         config["configurable"]["enable_websearch"] = req.enable_websearch
+    if req.enable_retrieval is not None:
+        config["configurable"]["enable_retrieval"] = req.enable_retrieval
 
     # Combine message with uploaded documents for LLM
     message_content = req.message

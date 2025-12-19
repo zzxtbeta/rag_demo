@@ -55,14 +55,17 @@ async def query_or_respond(state: State, config: Optional[RunnableConfig] = None
     # 从配置中提取参数
     chat_model = None
     enable_websearch = False
+    enable_retrieval = None
     if config and hasattr(config, "configurable") and config.configurable:
         chat_model = config.configurable.get("chat_model")
         enable_websearch = config.configurable.get("enable_websearch", False)
+        enable_retrieval = config.configurable.get("enable_retrieval")
     elif config and isinstance(config, dict) and "configurable" in config:
         chat_model = config["configurable"].get("chat_model")
         enable_websearch = config["configurable"].get("enable_websearch", False)
+        enable_retrieval = config["configurable"].get("enable_retrieval")
     
-    tools = get_model_tools(enable_websearch=enable_websearch)
+    tools = get_model_tools(enable_websearch=enable_websearch, enable_retrieval=enable_retrieval)
     
     llm = _get_llm(chat_model)
     llm_with_tools = llm.bind_tools(tools)

@@ -50,6 +50,8 @@ class ChatRequest(BaseModel):
 
     - enable_websearch: 是否启用网络搜索（可选，默认 False）
 
+    - enable_retrieval: 是否启用向量检索工具（可选）。若未提供，则由环境变量控制默认行为。
+
     - documents: 用户上传的文档元数据（可选），包含 filename、format、markdown_content
     """
 
@@ -63,6 +65,12 @@ class ChatRequest(BaseModel):
     )
     enable_websearch: bool = Field(
         False, description="Enable web search using Tavily API (requires TAVILY_API_KEY)"
+    )
+    enable_retrieval: Optional[bool] = Field(
+        None,
+        description=(
+            "Enable vector retrieval tool (retrieve_context). If omitted, defaults to enabled when RETRIEVAL_ENABLED=true"
+        ),
     )
     documents: Optional[list[DocumentMetadata]] = Field(
         None, description="Optional uploaded documents with metadata"

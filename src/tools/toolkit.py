@@ -19,16 +19,20 @@ from langgraph.prebuilt import ToolNode
 from config.settings import get_settings
 from tools.my_projects import list_my_projects
 from tools.project_search import search_projects
-# from tools.retrieval import retrieve_context
+from tools.retrieval import retrieve_context
 from tools.web_search import web_search
 
 
-def get_model_tools(*, enable_websearch: bool) -> List:
+def get_model_tools(*, enable_websearch: bool, enable_retrieval=None) -> List:
     """Tools bound to the model for a single request."""
     settings = get_settings()
 
     tools: list = []
-    # tools: list = [retrieve_context]
+    retrieval_allowed = settings.retrieval_enabled and (
+        enable_retrieval if enable_retrieval is not None else True
+    )
+    if retrieval_allowed:
+        tools.append(retrieve_context)
     if settings.project_search_enabled:
         tools.append(list_my_projects)
         tools.append(search_projects)
@@ -48,7 +52,8 @@ def get_tool_node_tools() -> List:
     settings = get_settings()
 
     tools: list = []
-    # tools: list = [retrieve_context]  # 临时禁用
+    if settings.retrieval_enabled:
+        tools.append(retrieve_context)
     if settings.project_search_enabled:
         tools.append(list_my_projects)
         tools.append(search_projects)

@@ -66,6 +66,7 @@ class Settings:
     chunk_size: int
     chunk_overlap: int
     retriever_top_k: int
+    retrieval_enabled: bool
     rerank_enabled: bool
     rerank_model: str
     rerank_top_n: int
@@ -123,6 +124,7 @@ def get_settings() -> Settings:
         chunk_size=_coerce_int("CHUNK_SIZE", 1000),
         chunk_overlap=_coerce_int("CHUNK_OVERLAP", 200),
         retriever_top_k=_coerce_int("RETRIEVER_TOP_K", 4),
+        retrieval_enabled=os.getenv("RETRIEVAL_ENABLED", "false").lower() == "true",
         rerank_enabled=os.getenv("RERANK_ENABLED", "false").lower() == "true",
         rerank_model=os.getenv("RERANK_MODEL", "qwen3-rerank"),
         rerank_top_n=_coerce_int("RERANK_TOP_N", 3),

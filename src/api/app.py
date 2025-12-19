@@ -85,7 +85,6 @@ def create_app() -> FastAPI:
         documents_router,
         prefix="/documents",
         tags=["documents"],
-        dependencies=[Depends(require_user)],
     )
     return app
 

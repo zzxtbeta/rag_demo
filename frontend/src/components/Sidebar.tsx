@@ -11,6 +11,8 @@ interface SidebarProps {
   onDeleteThread: (threadId: string) => Promise<void>;
   userId?: string;
   onToggleSidebar?: () => void;
+  activeView?: "chat" | "kb";
+  onChangeView?: (view: "chat" | "kb") => void;
 }
 
 const Sidebar: FC<SidebarProps> = ({
@@ -21,6 +23,8 @@ const Sidebar: FC<SidebarProps> = ({
   onDeleteThread,
   userId = "zzxt",
   onToggleSidebar,
+  activeView = "chat",
+  onChangeView,
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [hoveredThreadId, setHoveredThreadId] = useState<string | null>(null);
@@ -137,6 +141,25 @@ const Sidebar: FC<SidebarProps> = ({
           )}
         </div>
       </div>
+
+      {onChangeView && (
+        <div className="sidebar-nav">
+          <button
+            className={`sidebar-nav-item ${activeView === "chat" ? "active" : ""}`}
+            onClick={() => onChangeView("chat")}
+            type="button"
+          >
+            Chat
+          </button>
+          <button
+            className={`sidebar-nav-item ${activeView === "kb" ? "active" : ""}`}
+            onClick={() => onChangeView("kb")}
+            type="button"
+          >
+            Knowledge Base
+          </button>
+        </div>
+      )}
       <div className="sidebar-search">
         <input
           type="text"

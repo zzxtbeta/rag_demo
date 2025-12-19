@@ -28,67 +28,6 @@ STATUS_LABELS: dict[str, str] = {
 }
 
 
-class MyProjectsClient:
-    """Project management API client for listing the current user's projects."""
-
-    def __init__(self, api_url: str, username: str, password: str):
-        self.api_url = api_url.rstrip("/")
-        self.username = username
-        self.password = password
-        self.token: Optional[str] = None
-
-    async def _get_token(self) -> str:
-        if self.token:
-            return self.token
-
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{self.api_url}/api/auth/token",
-                data={
-                    "grant_type": "password",
-                    "username": self.username,
-                    "password": self.password,
-                },
-                timeout=API_TIMEOUT,
-            )
-            response.raise_for_status()
-            data = response.json()
-            self.token = data["access_token"]
-            return self.token
-
-    async def list_my_projects(self, *, status: Optional[str]) -> object:
-        token = await self._get_token()
-
-        params: dict[str, str] = {}
-        if status:
-            params["status"] = status
-
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{self.api_url}/api/projects/my",
-                    params=params,
-                    headers={"Authorization": f"Bearer {token}"},
-                    timeout=API_TIMEOUT,
-                )
-                response.raise_for_status()
-                return response.json()
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 401:
-                self.token = None
-                token = await self._get_token()
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(
-                        f"{self.api_url}/api/projects/my",
-                        params=params,
-                        headers={"Authorization": f"Bearer {token}"},
-                        timeout=API_TIMEOUT,
-                    )
-                    response.raise_for_status()
-                    return response.json()
-            raise
-
-
 async def _list_my_projects_with_token(*, api_url: str, token: str, status: Optional[str]) -> object:
     params: dict[str, str] = {}
     if status:
@@ -217,4 +156,4 @@ async def list_my_projects(status: Optional[str] = None) -> str:
         return "项目列表查询失败，请稍后重试"
 
 
-__all__ = ["list_my_projects", "MyProjectsClient"]
+__all__ = ["list_my_projects"]

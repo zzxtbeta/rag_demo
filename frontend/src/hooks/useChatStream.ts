@@ -16,6 +16,7 @@ const STORAGE_KEY_THREADS = "chat_threads";
 const STORAGE_KEY_ACTIVE_THREAD = "chat_active_thread";
 const STORAGE_KEY_CHAT_MODEL = "chat_model";
 const STORAGE_KEY_WEBSEARCH = "enable_websearch";
+const STORAGE_KEY_RETRIEVAL = "enable_retrieval";
 const STORAGE_KEY_ACCESS_TOKEN = "access_token";
 
 function getAuthHeaders(): HeadersInit {
@@ -71,6 +72,8 @@ interface UseChatStreamResult {
   setChatModel: (model: string) => void;
   enableWebsearch: boolean;
   setEnableWebsearch: (enabled: boolean) => void;
+  enableRetrieval: boolean;
+  setEnableRetrieval: (enabled: boolean) => void;
   traceStats: TraceStats | null;
 }
 
@@ -159,6 +162,10 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
   const [enableWebsearch, setEnableWebsearchState] = useState<boolean>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_WEBSEARCH);
     return saved ? JSON.parse(saved) : false;
+  });
+  const [enableRetrieval, setEnableRetrievalState] = useState<boolean>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_RETRIEVAL);
+    return saved ? JSON.parse(saved) : true;
   });
   const [traceStats, setTraceStats] = useState<TraceStats | null>(null);
 
@@ -545,7 +552,20 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
 
   const setEnableWebsearch = useCallback((enabled: boolean) => {
     setEnableWebsearchState(enabled);
-    localStorage.setItem(STORAGE_KEY_WEBSEARCH, JSON.stringify(enabled));
+    try {
+      localStorage.setItem(STORAGE_KEY_WEBSEARCH, JSON.stringify(enabled));
+    } catch (error) {
+      console.error("Failed to save enable_websearch:", error);
+    }
+  }, []);
+
+  const setEnableRetrieval = useCallback((enabled: boolean) => {
+    setEnableRetrievalState(enabled);
+    try {
+      localStorage.setItem(STORAGE_KEY_RETRIEVAL, JSON.stringify(enabled));
+    } catch (error) {
+      console.error("Failed to save enable_retrieval:", error);
+    }
   }, []);
 
   const updateThreadTitle = useCallback((threadId: string, title: string) => {
@@ -656,6 +676,7 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
         message: content,
         chat_model: chatModel,
         enable_websearch: enableWebsearch,
+        enable_retrieval: enableRetrieval,
       };
 
       // 如果有上传的文档，传递完整的文档元数据给后端
@@ -672,7 +693,7 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
         body: JSON.stringify(requestBody),
       });
     },
-    [ensureThread, attachWebSocket, userId, chatModel, enableWebsearch, generateTitleFromMessage],
+    [ensureThread, attachWebSocket, userId, chatModel, enableWebsearch, enableRetrieval, generateTitleFromMessage],
   );
 
   useEffect(() => {
@@ -699,8 +720,8 @@ export function useChatStream(userId: string = "demo-user"): UseChatStreamResult
     setChatModel,
     enableWebsearch,
     setEnableWebsearch,
+    enableRetrieval,
+    setEnableRetrieval,
     traceStats,
   };
 }
-
-

@@ -4,7 +4,7 @@
 - 发起一次对话（流式）
 - 订阅同一 thread 的实时事件（token / 节点 output / complete / error）
 - 加载历史对话（用户可见版本）
-- 文档上传与转换（MarkItDown / MinerU）
+- 文档上传与处理（MarkItDown / Embed）
 
 > 后端基于 FastAPI；路由注册位置见 src/api/app.py。
 
@@ -85,6 +85,9 @@ flowchart TD
 - `message`（string，必填）：用户输入
 - `chat_model`（string，可选）：模型名（如未传使用后端默认）
 - `enable_websearch`（bool，可选，默认 false）：是否启用 web search
+- `enable_retrieval`（bool，可选）：是否启用知识库向量检索工具（`retrieve_context`）
+  - 若未传：默认行为由后端环境变量 `RETRIEVAL_ENABLED` 控制
+  - 若显式传 false：即使后端启用了检索，也会在本次请求禁用检索工具
 - `documents`（array，可选）：上传文档内容（每项含 filename/format/markdown_content）
 
 响应体：StreamStartResponse
@@ -246,7 +249,30 @@ HistoryMessage（前端常用字段）
 
 ---
 
-### 6.2 文档输入：先转 Markdown，再提问（前端只需知道这个流程）
+### 6.2 Embed：上传并写入向量知识库（一次性 JSON 返回）
+
+- Method：POST
+- Path：`/agent/documents/embed`
+- Content-Type：`multipart/form-data`
+- Form 字段：
+  - `files`（可重复，最多 4 个文件）
+  - `collection_name`（string，可选）：指定向量库 collection；不传则使用后端默认
+
+响应（JSON）：
+- `collection_name`
+- `total_chunks_embedded`
+- `results[]`（每个文件一条）
+  - `status`: `embedded` | `skipped` | `error`
+  - `chunks_created`
+  - `file_hash`（用于去重）
+  - `message` / `error`
+
+说明
+- 该接口用于“入库”（让后续 `retrieve_context` 能检索到），不是临时对话上下文。
+
+---
+
+### 6.3 文档输入：先转 Markdown，再提问（前端只需知道这个流程）
 
 前端如果需要“带文档提问”，推荐流程是：
 1) UI 里把文件拖拽/选择进来
@@ -270,7 +296,7 @@ flowchart TD
 
 说明
 - 当前后端会把 `documents` 合并进用户消息内容中（用于模型阅读）；前端只需要按 `documents` 字段传入即可。
-- MinerU 相关处理接口属于后端离线/内部处理链路，不作为前端对接必需项。
+- 如果前端要把文件“入库”供后续知识库检索使用，调用 `POST /agent/documents/embed`。
 
 ---
 

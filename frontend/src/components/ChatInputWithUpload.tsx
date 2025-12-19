@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { DocumentUpload } from './DocumentUpload'
+import { RetrievalToggle } from './RetrievalToggle'
 import { WebSearchToggle } from './WebSearchToggle'
 import { useDocumentUpload } from '../hooks/useDocumentUpload'
 
@@ -16,6 +17,8 @@ interface ChatInputWithUploadProps {
   onChatModelChange?: (model: string) => void
   enableWebsearch?: boolean
   onEnableWebsearchChange?: (enabled: boolean) => void
+  enableRetrieval?: boolean
+  onEnableRetrievalChange?: (enabled: boolean) => void
 }
 
 export function ChatInputWithUpload({
@@ -25,6 +28,8 @@ export function ChatInputWithUpload({
   onChatModelChange,
   enableWebsearch = false,
   onEnableWebsearchChange,
+  enableRetrieval = true,
+  onEnableRetrievalChange,
 }: ChatInputWithUploadProps) {
   const [message, setMessage] = useState('')
   const [dragOver, setDragOver] = useState(false)
@@ -168,6 +173,14 @@ export function ChatInputWithUpload({
               <WebSearchToggle
                 enabled={enableWebsearch}
                 onChange={onEnableWebsearchChange}
+                disabled={isLoading || isUploading}
+              />
+            )}
+
+            {onEnableRetrievalChange && (
+              <RetrievalToggle
+                enabled={enableRetrieval}
+                onChange={onEnableRetrievalChange}
                 disabled={isLoading || isUploading}
               />
             )}
